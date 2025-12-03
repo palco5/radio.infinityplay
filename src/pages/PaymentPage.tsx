@@ -2,67 +2,50 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { localAuth } from '../lib/localStorage';
-import { Check, CreditCard, Shield, Clock, Building2, MapPin } from 'lucide-react';
+import { Check, CreditCard, Shield, Clock, Building2, MapPin, AlertCircle } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 
 const pricingPlans = [
   {
-    id: 'web-radio',
-    name: 'WEB RADIO',
+    id: 'basic-radio',
+    name: 'BASIC RADIO',
     price: 15,
     currency: '€',
     interval: 'mesečno',
     trialDays: 7,
     features: [
-      'Mogućnost slušanja bilo koje dostupne stanice',
-      'Pristup svim žanrovima muzike',
-      'HD kvalitet zvuka (320kbps)',
+      'Pristup svim stanicama',
       'Bez reklama',
-      'Podrška putem emaila',
-      'Otkaži u bilo kom trenutku',
-    ],
-    discounts: [
-      { months: 5, discount: '10%' },
-      { months: 10, discount: '20%' }
+      'Visok kvalitet zvuka',
+      'Podrška putem emaila'
     ]
   },
   {
-    id: 'box-radio',
-    name: 'BOX RADIO',
-    price: 50,
+    id: 'branded-radio',
+    name: 'BRANDED RADIO',
+    price: 35,
     currency: '€',
     interval: 'mesečno',
     features: [
-      'Sve iz WEB RADIO paketa',
-      'Personalizovani stream sa vašim džinglovima',
-      'Prilagođena plejlista',
-      'Brendirana grafika i vizuelni identitet',
-      'Prioritetna podrška 24/7',
-      'Promotivna sekcija na početnoj stranici',
-      'Mesečni izveštaj o slušanosti',
-    ],
-    discounts: [
-      { months: 5, discount: '10%' },
-      { months: 10, discount: '20%' }
+      'Sve iz Basic paketa',
+      'Brendirani džinglovi',
+      'Prioritetna podrška',
+      'Personalizovani stream'
     ]
   },
   {
-    id: 'moj-radio',
-    name: 'MOJ RADIO',
-    price: 240,
+    id: 'host-radio',
+    name: 'HOST RADIO',
+    price: 195,
     currency: '€',
     interval: 'godišnje',
     features: [
-      'Sve iz BOX RADIO paketa',
-      'Potpuno prilagođen radio stream',
-      'Neograničeni džinglovi i reklame',
-      'Dedikovan server',
-      'VIP podrška 24/7',
-      'Mesečni detaljni izveštaji',
-      'Marketinška podrška',
-      'Ušteda od 33% u odnosu na mesečno plaćanje',
-    ],
+      'Sve iz Branded paketa',
+      'Admin panel',
+      'Kreiranje stanica',
+      'Profesionalni hosting'
+    ]
   },
 ];
 
@@ -94,11 +77,11 @@ export default function PaymentPage() {
     if (planId) {
       setSelectedPlan(planId);
     } else {
-      setSelectedPlan('web-radio');
+      setSelectedPlan('basic-radio');
     }
   }, [user, searchParams, navigate]);
 
-  const plan = pricingPlans.find(p => p.id === selectedPlan);
+  const plan = pricingPlans.find(p => p.id === selectedPlan) || pricingPlans[0];
 
   const handlePayment = async () => {
     if (!plan || !user) return;
@@ -116,8 +99,8 @@ export default function PaymentPage() {
         subscription_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       };
 
-      // Handle Trial for Web Radio
-      if (plan.id === 'web-radio') {
+      // Handle Trial for Basic Radio
+      if (plan.id === 'basic-radio') {
         updates.subscription_status = 'trial';
         updates.trial_started_at = new Date().toISOString();
         updates.trial_ends_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -171,17 +154,20 @@ export default function PaymentPage() {
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Poziv na broj:</p>
-                <p className="font-mono font-bold text-gray-900 dark:text-white">
-                  {user?.id.substring(0, 8).toUpperCase()}
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Svrha uplate:</p>
+                <p className="font-mono font-bold text-gray-900 dark:text-white break-all">
+                  Infinityplay, {user?.email || 'vasa email adresa'}
                 </p>
               </div>
             </div>
 
             <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                ⚠️ <strong>Napomena:</strong> PayPal/Kartica plaćanje iz Srbije nije preporučeno zbog visokih provizija.
-              </p>
+              <div className="flex items-start">
+                <AlertCircle className="text-yellow-600 dark:text-yellow-400 mr-2 mt-0.5" size={20} />
+                <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                  Važno: U svrhu uplate obavezno upišite email adresu sa kojom ste se registrovali kako bismo odmah aktivirali vaš nalog.
+                </p>
+              </div>
             </div>
 
             <p className="text-xs text-gray-600 dark:text-gray-400 mt-4">
@@ -320,60 +306,24 @@ export default function PaymentPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-infinity-green-50 dark:from-infinity-dark-900 dark:to-infinity-dark-800 pt-32 pb-20">
-      <div className="container mx-auto px-4 max-w-5xl">
+    <div className="min-h-screen bg-gray-50 dark:bg-infinity-dark-900 pt-24 pb-12 px-4">
+      <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-serif font-bold text-gray-900 dark:text-white mb-4">
-            Završite Pretplatu
+          <h1 className="text-4xl font-serif font-bold text-gray-900 dark:text-white mb-4">
+            Izvršite Plaćanje
           </h1>
           <p className="text-xl text-gray-600 dark:text-gray-400">
-            Odaberite paket i metod plaćanja
+            Izabrali ste <span className="font-bold text-infinity-green-600">{plan.name}</span> paket
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Left Column - Plan Selection */}
-          <div>
-            <Card>
-              <h2 className="text-2xl font-serif font-bold text-gray-900 dark:text-white mb-6">
-                Odabrani Paket
-              </h2>
-
-              <div className="bg-gradient-infinity p-6 rounded-2xl mb-6">
-                <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
-                <div className="flex items-baseline text-white mb-4">
-                  <span className="text-4xl font-bold">{plan.price}</span>
-                  <span className="text-xl ml-1">{plan.currency}</span>
-                  <span className="text-sm ml-2 opacity-90">/ {plan.interval}</span>
-                </div>
-                {plan.trialDays && (
-                  <div className="flex items-center bg-white/20 backdrop-blur rounded-lg px-4 py-2">
-                    <Clock className="mr-2" size={20} />
-                    <span className="font-medium">Probaj {plan.trialDays} dana besplatno!</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3 mb-6">
-                {plan.features.map((feature, index) => (
-                  <div key={index} className="flex items-start">
-                    <Check className="text-infinity-green-600 mr-2 flex-shrink-0 mt-0.5" size={20} />
-                    <span className="text-gray-700 dark:text-gray-300">{feature}</span>
-                  </div>
-                ))}
-              </div>
-
-              {plan.discounts && (
-                <div className="bg-infinity-green-50 dark:bg-infinity-green-900/20 border border-infinity-green-200 dark:border-infinity-green-800 rounded-xl p-4 mb-6">
-                  <p className="font-bold text-gray-900 dark:text-white mb-2">💰 Popusti za unapred plaćanje:</p>
-                  {plan.discounts.map((discount, idx) => (
-                    <p key={idx} className="text-sm text-gray-700 dark:text-gray-300">
-                      • {discount.months} meseci unapred: <strong>{discount.discount} popusta</strong>
-                    </p>
-                  ))}
-                </div>
-              )}
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Leva strana - Detalji paketa */}
+          <div className="space-y-6">
+            <Card className="p-6">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                Izaberite Paket
+              </h3>
               <div className="space-y-3">
                 {pricingPlans.map((p) => (
                   <button
@@ -384,19 +334,36 @@ export default function PaymentPage() {
                       : 'border-gray-200 dark:border-gray-700 hover:border-infinity-green-300'
                       }`}
                   >
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      {p.name} - {p.price}{p.currency}
-                    </span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">
-                      / {p.interval}
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {p.name}
+                      </span>
+                      <span className="font-bold text-infinity-green-600">
+                        {p.price}{p.currency}
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {p.interval}
                     </span>
                   </button>
                 ))}
               </div>
+
+              <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <h4 className="font-bold text-gray-900 dark:text-white mb-3">Uključeno u paket:</h4>
+                <ul className="space-y-2">
+                  {plan.features.map((feature, index) => (
+                    <li key={index} className="flex items-start text-sm text-gray-600 dark:text-gray-400">
+                      <Check className="text-infinity-green-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </Card>
           </div>
 
-          {/* Right Column - Payment Method */}
+          {/* Desna strana - Metod Plaćanja */}
           <div>
             <Card>
               <h2 className="text-2xl font-serif font-bold text-gray-900 dark:text-white mb-6">
