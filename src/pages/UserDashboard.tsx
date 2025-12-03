@@ -180,7 +180,7 @@ export default function UserDashboard() {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16 md:h-20">
             <div className="flex items-center space-x-2 md:space-x-3">
-              <img src="/logo.png" alt="InfinityPlay" className="h-8 md:h-10 w-auto" />
+              <img src="logo.png" alt="InfinityPlay" className="h-8 md:h-10 w-auto" />
               <span className="text-lg md:text-xl font-serif font-bold text-gray-900 dark:text-white">
                 Dashboard
               </span>

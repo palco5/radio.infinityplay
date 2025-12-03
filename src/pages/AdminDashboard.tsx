@@ -122,7 +122,7 @@ export default function AdminDashboard() {
     if (stations.length > 0) {
       const counts: Record<string, number> = {};
       stations.forEach(s => {
-        counts[s.id] = Math.floor(Math.random() * 50);
+        counts[s.id] = s.listener_count || 0;
       });
       setListenerCounts(counts);
     }
@@ -1140,7 +1140,7 @@ export default function AdminDashboard() {
       <div className="lg:hidden bg-white dark:bg-infinity-dark-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <img src="/logo.png" alt="InfinityPlay" className="h-8 w-auto" />
+            <img src="logo.png" alt="InfinityPlay" className="h-8 w-auto" />
             <span className="text-sm font-semibold text-gray-900 dark:text-white">Admin</span>
           </div>
           <div className="flex items-center space-x-2">
@@ -1183,7 +1183,7 @@ export default function AdminDashboard() {
       {/* Desktop Sidebar */}
       <aside className="hidden lg:block w-64 bg-white dark:bg-infinity-dark-800 border-r border-gray-200 dark:border-gray-700 fixed h-full overflow-y-auto">
         <div className="p-6">
-          <img src="/logo.png" alt="InfinityPlay" className="h-10 w-auto mb-6" />
+          <img src="logo.png" alt="InfinityPlay" className="h-10 w-auto mb-6" />
           <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold mb-4">
             Admin Panel
           </p>

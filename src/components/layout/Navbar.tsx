@@ -59,7 +59,7 @@ export default function Navbar() {
             className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
           >
             <img
-              src="/logo.png"
+              src="logo.png"
               alt="InfinityPlay Radio"
               className="h-12 w-auto object-contain"
             />
