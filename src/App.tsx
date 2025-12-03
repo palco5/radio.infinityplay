@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AudioProvider } from './contexts/AudioContext';
@@ -103,7 +103,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 function App() {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
+      <HashRouter>
         <AuthProvider>
           <ThemeProvider>
             <AudioProvider>
@@ -111,7 +111,7 @@ function App() {
             </AudioProvider>
           </ThemeProvider>
         </AuthProvider>
-      </BrowserRouter>
+      </HashRouter>
     </ErrorBoundary>
   );
 }
