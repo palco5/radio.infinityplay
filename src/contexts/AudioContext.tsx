@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useRef, ReactNode, useEffect } from 'react';
 import { RadioStation, UserJingle } from '../types';
 import { useAuth } from './AuthContext';
-import { profiles as profilesApi } from '../lib/api';
+import { profiles as profilesApi, nowplaying as nowplayingApi } from '../lib/api';
 import { JingleRotationManager } from '../lib/jingleManager';
 
 interface AudioContextType {
@@ -43,6 +43,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const jingleAudioRef = useRef<HTMLAudioElement | null>(null);
   // Track current station id to skip jingles on Moj Radio streams
   const currentStationIdRef = useRef<string | null>(null);
+  // Song title polling for songs-based jingle scheduling
+  const currentStreamUrlRef = useRef<string | null>(null);
+  const songTitleRef = useRef<string>('');
+  const songPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Jingle waiting for next song transition (songs mode)
+  const jingleReadyRef = useRef<import('../types').UserJingle | null>(null);
+  // Timestamp when jingleReadyRef was set (for timeout fallback)
+  const jingleReadyAtRef = useRef<number>(0);
+  // Preloaded audio element for the queued jingle
+  const jinglePreloadRef = useRef<HTMLAudioElement | null>(null);
+  // Whether the current station's stream returns ICY metadata
+  const icyAvailableRef = useRef<boolean>(false);
 
   // Generation counter — increments on every playStation/pause call.
   // Lets async jingle playback detect it has become stale.
@@ -71,6 +83,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       if (audioRef2.current) { audioRef2.current.pause(); audioRef2.current.src = ''; }
       if (jingleCheckIntervalRef.current) clearInterval(jingleCheckIntervalRef.current);
       if (jingleAudioRef.current) { jingleAudioRef.current.pause(); jingleAudioRef.current.src = ''; }
+      if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
       updateListeningTime();
     };
   }, []);
@@ -167,21 +180,84 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const getJingleUrl = (jingle: import('../types').UserJingle) =>
+    jingle.jingle_data
+      ? `data:audio/mpeg;base64,${jingle.jingle_data}`
+      : jingle.cloudinary_url || '';
+
   const checkForJingle = () => {
     if (!isPlayingRef.current || !jingleManagerRef.current) return;
-    // Never play jingles on Moj Radio — user manages those in MediaCP
     if (currentStationIdRef.current?.startsWith('moj-radio-')) return;
+    if (jingleReadyRef.current) return; // Already waiting for next transition
 
     const jingle = jingleManagerRef.current.shouldPlayJingle();
     if (!jingle) return;
 
-    const url = jingle.jingle_data
-      ? `data:audio/mpeg;base64,${jingle.jingle_data}`
-      : jingle.cloudinary_url || '';
+    const url = getJingleUrl(jingle);
 
-    playJingle(url, jingle.volume_boost_db || 0)
-      .then(() => { jingleManagerRef.current?.markPlayed(jingle.id); })
-      .catch((err) => console.error('❌ Jingle playback failed:', err));
+    if (jingle.schedule_type === 'songs' && icyAvailableRef.current) {
+      // Songs mode + ICY works: wait for next song boundary to play between songs
+      jingleReadyRef.current = jingle;
+      jingleReadyAtRef.current = Date.now();
+      // Preload the jingle now so it's ready to fire instantly at transition
+      if (url) {
+        const pre = new Audio(url);
+        pre.preload = 'auto';
+        pre.load();
+        jinglePreloadRef.current = pre;
+      }
+      // Switch to fast polling (3s)
+      if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
+      songPollIntervalRef.current = setInterval(pollCurrentTitle, 3000);
+    } else {
+      // Interval mode OR songs mode without ICY: play immediately
+      if (!url) { jingleManagerRef.current.markPlayed(jingle.id); return; }
+      playJingle(url, jingle.volume_boost_db || 0)
+        .then(() => { jingleManagerRef.current?.markPlayed(jingle.id); })
+        .catch((err) => console.error('❌ Jingle playback failed:', err));
+    }
+  };
+
+  const fireReadyJingle = (jingle: import('../types').UserJingle) => {
+    jingleReadyRef.current = null;
+    jingleReadyAtRef.current = 0;
+    jingleManagerRef.current?.markPlayed(jingle.id);
+    const url = getJingleUrl(jingle);
+    if (!url) return;
+    // Use preloaded audio if available, otherwise let playJingle load it
+    const preloaded = jinglePreloadRef.current;
+    jinglePreloadRef.current = null;
+    playJingle(url, jingle.volume_boost_db || 0, preloaded ?? undefined).catch(console.error);
+    if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
+    songPollIntervalRef.current = setInterval(pollCurrentTitle, 30000);
+  };
+
+  const pollCurrentTitle = async () => {
+    if (!isPlayingRef.current || !currentStreamUrlRef.current) return;
+    if (currentStationIdRef.current?.startsWith('moj-radio-')) return;
+
+    // Timeout fallback: if jingle was ready for > 3 min without a detected transition, play it now
+    if (jingleReadyRef.current && jingleReadyAtRef.current &&
+        (Date.now() - jingleReadyAtRef.current) > 180_000) {
+      fireReadyJingle(jingleReadyRef.current);
+      return;
+    }
+
+    const title = await nowplayingApi.getTitle(currentStreamUrlRef.current);
+    if (title) icyAvailableRef.current = true;
+    if (!title) return;
+
+    if (songTitleRef.current && title !== songTitleRef.current) {
+      if (jingleReadyRef.current) {
+        // Jingle was waiting for exactly this transition — fire it now
+        fireReadyJingle(jingleReadyRef.current);
+      } else {
+        // No jingle pending — count the song and check if threshold is now reached
+        jingleManagerRef.current?.notifySongChange();
+        checkForJingle();
+      }
+    }
+    songTitleRef.current = title;
   };
 
   const playStation = async (station: RadioStation) => {
@@ -198,6 +274,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
 
     currentStationIdRef.current = station.id;
+    currentStreamUrlRef.current = station.stream_url;
+    songTitleRef.current = '';
+    jingleReadyRef.current = null;
+    jingleReadyAtRef.current = 0;
+    icyAvailableRef.current = false;
+    if (jinglePreloadRef.current) { jinglePreloadRef.current.src = ''; jinglePreloadRef.current = null; }
 
     // Reset jingle timer so the countdown restarts from station switch
     jingleManagerRef.current?.resetTimer();
@@ -230,9 +312,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         currentDeck.pause();
       }
 
-      // Restart jingle check interval (every 60s)
+      // Restart jingle check interval (every 60s for interval-based jingles)
       if (jingleCheckIntervalRef.current) clearInterval(jingleCheckIntervalRef.current);
       jingleCheckIntervalRef.current = setInterval(checkForJingle, 60000);
+
+      // Start song title polling (every 30s for songs-based jingles)
+      if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
+      songPollIntervalRef.current = setInterval(pollCurrentTitle, 30000);
+      pollCurrentTitle(); // Fetch initial title immediately
 
       await fadeIn(nextDeck, targetVolume, 1500);
       if (!currentDeck.paused) currentDeck.pause();
@@ -242,7 +329,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const playJingle = async (jingleUrl: string, volumeBoostDb: number = 0) => {
+  const playJingle = async (jingleUrl: string, volumeBoostDb: number = 0, preloadedAudio?: HTMLAudioElement) => {
     if (!isPlayingRef.current) return;
 
     const jingleGen = playGenRef.current;
@@ -257,18 +344,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const radioDeck = activeDeckRef.current === 1 ? audioRef1.current : audioRef2.current;
     if (!radioDeck) return;
 
-    const jingleAudio = new Audio(jingleUrl);
+    const jingleAudio = preloadedAudio ?? new Audio(jingleUrl);
     jingleAudio.volume = 0;
     jingleAudioRef.current = jingleAudio;
 
     try {
-      // Preload fully before starting
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Jingle load timeout')), 10000);
-        jingleAudio.addEventListener('canplaythrough', () => { clearTimeout(timeout); resolve(); }, { once: true });
-        jingleAudio.addEventListener('error', () => { clearTimeout(timeout); reject(new Error('Jingle load error')); }, { once: true });
-        jingleAudio.load();
-      });
+      // Skip preload wait if already loaded (readyState 4 = HAVE_ENOUGH_DATA)
+      if (jingleAudio.readyState < 4) {
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Jingle load timeout')), 10000);
+          jingleAudio.addEventListener('canplaythrough', () => { clearTimeout(timeout); resolve(); }, { once: true });
+          jingleAudio.addEventListener('error', () => { clearTimeout(timeout); reject(new Error('Jingle load error')); }, { once: true });
+          if (!preloadedAudio) jingleAudio.load();
+        });
+      }
 
       if (jingleGen !== playGenRef.current || !isPlayingRef.current) {
         jingleAudio.src = ''; jingleAudioRef.current = null; return;
@@ -332,6 +421,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     playGenRef.current++;
 
     if (jingleCheckIntervalRef.current) { clearInterval(jingleCheckIntervalRef.current); jingleCheckIntervalRef.current = null; }
+    if (songPollIntervalRef.current) { clearInterval(songPollIntervalRef.current); songPollIntervalRef.current = null; }
+    songTitleRef.current = '';
+    jingleReadyRef.current = null;
+    jingleReadyAtRef.current = 0;
+    icyAvailableRef.current = false;
+    if (jinglePreloadRef.current) { jinglePreloadRef.current.src = ''; jinglePreloadRef.current = null; }
 
     // Kill active jingle
     if (jingleAudioRef.current) {

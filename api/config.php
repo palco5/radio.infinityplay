@@ -7,7 +7,7 @@ define('DB_PASS', 'racivaci10');
 define('DB_CHARSET', 'utf8mb4');
 
 // JWT Secret
-define('JWT_SECRET', 'infinityplay_secret_key_2025_change_this');
+define('JWT_SECRET', '0c198658aed246fb823265e362d324fbc55236d14f35e240f689b1575c22a58bd02b765dab30d2fd505b1f1aaa719256');
 
 // CORS Settings
 define('CORS_ORIGIN', 'https://radio.infinityplay.rs');

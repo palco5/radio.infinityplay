@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAudio } from '../contexts/AudioContext';
 import { stations as stationsApi, profiles as profilesApi, jingles as jinglesApi } from '../lib/api';
 import { useEventBus, EVENTS } from '../lib/eventBus';
-import { RadioStation } from '../types';
+import { RadioStation, UserProfile } from '../types';
 
 import confetti from 'canvas-confetti';
 import {
@@ -35,6 +35,9 @@ import { Shield } from 'lucide-react';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const adminViewUserId = searchParams.get('adminView');
+
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { currentStation, isPlaying, playStation, pause, updateJingles } = useAudio();
@@ -50,6 +53,18 @@ export default function UserDashboard() {
   const [showDashboardSelector, setShowDashboardSelector] = useState(false);
   const [isTrialExpired, setIsTrialExpired] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [adminViewProfile, setAdminViewProfile] = useState<UserProfile | null>(null);
+
+  // Kada admin gleda tuđi dashboard — učitaj taj profil
+  useEffect(() => {
+    if (adminViewUserId) {
+      profilesApi.getById(adminViewUserId).then(setAdminViewProfile).catch(console.error);
+    }
+  }, [adminViewUserId]);
+
+  // Aktivan profil: admin-pregled ili sopstveni (profile kao fallback dok se učitava)
+  const activeProfile = adminViewUserId ? (adminViewProfile ?? null) : profile;
+  const adminViewLoading = !!adminViewUserId && adminViewProfile === null;
 
   useEffect(() => {
     fetchStations();
@@ -57,13 +72,14 @@ export default function UserDashboard() {
       checkOnboardingStatus();
       checkAndShowConfetti();
 
-      // Fetch and load jingles
-      jinglesApi.getAll(user.id).then(userJingles => {
+      // Fetch and load jingles — in admin view, load the target user's jingles
+      const jingleUserId = adminViewUserId || user.id;
+      jinglesApi.getAll(jingleUserId).then(userJingles => {
         console.log('🎵 Loading jingles into AudioContext:', userJingles.length);
         updateJingles(userJingles);
       }).catch(err => console.error('Failed to load jingles:', err));
     }
-  }, [user, profile]);
+  }, [user, profile, adminViewUserId]);
 
   useEffect(() => {
     // Wait until auth is NO LONGER loading and we have a profile
@@ -298,14 +314,14 @@ export default function UserDashboard() {
 
   const genres = Array.from(new Set(stations.map(s => s.genre)));
 
-  const mojRadioStation: RadioStation | null = profile?.my_radio_stream_url
+  const mojRadioStation: RadioStation | null = activeProfile?.my_radio_stream_url
     ? {
         id: `moj-radio-${user?.id}`,
         name: 'Moj Radio',
-        description: profile.display_name ? `${profile.display_name} — personalni stream` : 'Personalni radio stream',
+        description: activeProfile.display_name ? `${activeProfile.display_name} — personalni stream` : 'Personalni radio stream',
         genre: 'Personalni',
         logo_url: null,
-        stream_url: profile.my_radio_stream_url,
+        stream_url: activeProfile.my_radio_stream_url,
         medicp_id: null,
         bitrate: 128,
         is_featured: true,
@@ -360,6 +376,26 @@ export default function UserDashboard() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors">
+      {/* Admin pregled banner */}
+      {adminViewUserId && (
+        <div className="bg-amber-400 text-amber-900 px-4 py-2 flex items-center justify-center gap-3 text-sm font-medium">
+          <Shield size={16} />
+          {adminViewLoading ? (
+            <span>Admin pregled — učitavanje profila...</span>
+          ) : (
+            <span>
+              Admin pregled — <strong>{adminViewProfile?.display_name || adminViewProfile?.email || '?'}</strong>
+              {adminViewProfile?.display_name && adminViewProfile?.email && ` (${adminViewProfile.email})`}
+            </span>
+          )}
+          <button
+            onClick={() => window.close()}
+            className="ml-4 px-2 py-0.5 bg-amber-900/20 hover:bg-amber-900/30 rounded text-xs transition-colors"
+          >
+            Zatvori tab
+          </button>
+        </div>
+      )}
       <nav className="bg-white dark:bg-infinity-dark-800 border-b border-gray-200 dark:border-gray-700">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16 md:h-20">
@@ -386,16 +422,16 @@ export default function UserDashboard() {
               </button>
 
               <button
-                onClick={() => setShowProfileModal(true)}
-                className="flex items-center space-x-2 md:space-x-3 px-2 md:px-4 py-1.5 md:py-2 bg-gray-100 dark:bg-infinity-dark-700 rounded-full hover:bg-gray-200 dark:hover:bg-infinity-dark-600 transition-colors"
+                onClick={() => !adminViewUserId && setShowProfileModal(true)}
+                className={`flex items-center space-x-2 md:space-x-3 px-2 md:px-4 py-1.5 md:py-2 bg-gray-100 dark:bg-infinity-dark-700 rounded-full transition-colors ${adminViewUserId ? 'cursor-default' : 'hover:bg-gray-200 dark:hover:bg-infinity-dark-600'}`}
               >
-                {profile?.avatar_url ? (
-                  <span className="text-xl md:text-2xl">{profile.avatar_url}</span>
+                {activeProfile?.avatar_url ? (
+                  <span className="text-xl md:text-2xl">{activeProfile.avatar_url}</span>
                 ) : (
                   <User size={18} className="text-gray-600 dark:text-gray-400 md:w-5 md:h-5" />
                 )}
                 <span className="text-xs md:text-sm font-medium text-gray-900 dark:text-white hidden sm:inline">
-                  {profile?.display_name || user?.email?.split('@')[0]}
+                  {activeProfile?.display_name || user?.email?.split('@')[0]}
                 </span>
               </button>
 
@@ -449,11 +485,11 @@ export default function UserDashboard() {
                   Pronađite i slušajte svoje omiljene radio stanice
                 </p>
               </div>
-              {profile?.subscription_tier && (
+              {activeProfile?.subscription_tier && (
                 <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
                   <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg border border-white/30">
                     <span className="text-white text-sm md:text-base font-bold uppercase">
-                      {profile.subscription_status === 'trial' ? 'PROBNI PAKET' : profile.subscription_tier}
+                      {activeProfile.subscription_status === 'trial' ? 'PROBNI PAKET' : activeProfile.subscription_tier}
                     </span>
                   </div>
                 </div>
@@ -468,7 +504,7 @@ export default function UserDashboard() {
               </div>
               <div className="bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl p-4 text-white">
                 <Clock size={32} className="mb-2" />
-                <p className="text-2xl font-bold">{profile?.total_listening_minutes || 0}</p>
+                <p className="text-2xl font-bold">{activeProfile?.total_listening_minutes || 0}</p>
                 <p className="text-sm opacity-90">Minuta slušanja</p>
               </div>
               <div className="bg-gradient-to-br from-purple-400 to-purple-600 rounded-2xl p-4 text-white">
@@ -548,7 +584,7 @@ export default function UserDashboard() {
             <MojRadioCard
               isPlaying={isMojRadioPlaying}
               onClick={handleMojRadioClick}
-              displayName={profile?.display_name}
+              displayName={activeProfile?.display_name}
             />
           )}
 

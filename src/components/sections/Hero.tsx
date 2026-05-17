@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Play, LogIn } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../ui/Button';
@@ -25,6 +25,7 @@ export default function Hero() {
   const [tabletStations, setTabletStations] = useState<RadioStation[]>([]);
   const [topStations, setTopStations] = useState<RadioStation[]>([]);
   const [_loading, setLoading] = useState(true);
+  const marqueeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleOpenAuthModal = (event: any) => {
@@ -42,23 +43,20 @@ export default function Hero() {
           .filter((s: RadioStation) => s.is_active)
           .sort((a: RadioStation, b: RadioStation) => a.name.localeCompare(b.name));
 
-        // Filter out "Disco Fever" specifically for top right
-        const topCandidates = activeStations.filter((s: RadioStation) =>
-          !s.name.toLowerCase().includes('disco fever')
-        );
-        // Take exactly 6
-        setTopStations(topCandidates.slice(0, 6));
+        // Mobile marquee: only stations with hero_mobile enabled
+        const mobileStations = activeStations.filter((s: RadioStation) => Number(s.hero_mobile) !== 0);
+        setTopStations(mobileStations.slice(0, 12)); // up to 12 for a full loop
 
-        // Take next 8 for tablet
-        const tabletData = activeStations.length > 4 ? activeStations.slice(0, 8) : activeStations;
-        if (tabletData.length < 8 && tabletData.length > 0) {
-          const filled = [...tabletData];
-          while (filled.length < 8) {
-            filled.push(tabletData[filled.length % tabletData.length]);
-          }
+        // Desktop: only stations with hero_desktop enabled
+        const desktopStations = activeStations.filter((s: RadioStation) => Number(s.hero_desktop) !== 0);
+        const tabletData = desktopStations.length > 0 ? desktopStations : activeStations;
+        const tabletSlice = tabletData.slice(0, 8);
+        if (tabletSlice.length < 8 && tabletSlice.length > 0) {
+          const filled = [...tabletSlice];
+          while (filled.length < 8) filled.push(tabletSlice[filled.length % tabletSlice.length]);
           setTabletStations(filled);
         } else {
-          setTabletStations(tabletData.slice(0, 8));
+          setTabletStations(tabletSlice);
         }
 
       } catch (err) {
@@ -71,6 +69,16 @@ export default function Hero() {
 
     return () => window.removeEventListener('OPEN_AUTH_MODAL', handleOpenAuthModal);
   }, []);
+
+  // Force animation restart once stations load — fixes iOS/Android "stuck" issue
+  useEffect(() => {
+    const el = marqueeRef.current;
+    if (!el || topStations.length === 0) return;
+    el.style.animationName = 'none';
+    el.getBoundingClientRect(); // force reflow
+    el.style.animationName = '';
+    el.style.animationPlayState = 'running';
+  }, [topStations]);
 
   const scrollToPricing = () => {
     const element = document.getElementById('pricing');
@@ -120,9 +128,25 @@ export default function Hero() {
 
           {/* Mobile Marquee */}
           <div className="relative w-screen -ml-4 md:-ml-8 overflow-hidden my-6 z-0">
+            <style>{`
+               @keyframes ip-marquee {
+                 0%   { transform: translate3d(0, 0, 0); }
+                 100% { transform: translate3d(-50%, 0, 0); }
+               }
+               .ip-marquee {
+                 animation: ip-marquee 20s linear infinite;
+                 animation-play-state: running;
+                 will-change: transform;
+               }
+               @media (hover: hover) {
+                 .ip-marquee:hover {
+                   animation-play-state: paused;
+                 }
+               }
+             `}</style>
             <div className="absolute top-0 left-0 h-full w-12 bg-gradient-to-r from-white dark:from-[#0B1120] to-transparent z-20 pointer-events-none"></div>
             <div className="absolute top-0 right-0 h-full w-12 bg-gradient-to-l from-white dark:from-[#0B1120] to-transparent z-20 pointer-events-none"></div>
-            <div className="flex gap-4 animate-marquee w-max px-4">
+            <div ref={marqueeRef} className="ip-marquee flex gap-4 w-max px-4">
               {[...topStations, ...topStations].map((station, index) => {
                 const style = getGenreStyle(station.genre);
                 return (
@@ -139,18 +163,6 @@ export default function Hero() {
                 );
               })}
             </div>
-            <style>{`
-               @keyframes marquee {
-                 0% { transform: translateX(0); }
-                 100% { transform: translateX(-50%); }
-               }
-               .animate-marquee {
-                 animation: marquee 20s linear infinite;
-               }
-               .animate-marquee:hover {
-                 animation-play-state: paused;
-               }
-             `}</style>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -205,7 +217,7 @@ export default function Hero() {
                   width: '120%'
                 }}
               >
-                {[...topStations, ...topStations].slice(0, 8).map((station, i) => {
+                {tabletStations.slice(0, 8).map((station, i) => {
                   const style = getGenreStyle(station.genre);
                   return (
                     <div

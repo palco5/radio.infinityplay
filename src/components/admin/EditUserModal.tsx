@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { UserProfile } from '../../types';
 import { profiles } from '../../lib/api';
-import { X, User, MapPin, Radio } from 'lucide-react';
+import { X, User, MapPin, Radio, Clock } from 'lucide-react';
 import { JingleManagement } from './JingleManagement';
 
 interface EditUserModalProps {
@@ -12,6 +12,13 @@ interface EditUserModalProps {
 }
 
 export default function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
+    const toDatetimeLocal = (iso: string | null | undefined) => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
     const [formData, setFormData] = useState<Partial<UserProfile>>({
         display_name: user.display_name || '',
         subscription_status: user.subscription_status,
@@ -19,6 +26,7 @@ export default function EditUserModal({ user, onClose, onSuccess }: EditUserModa
         custom_location: user.custom_location || '',
         jingle_interval_minutes: user.jingle_interval_minutes || 7,
         my_radio_stream_url: user.my_radio_stream_url || '',
+        trial_ends_at: user.trial_ends_at || null,
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -32,6 +40,7 @@ export default function EditUserModal({ user, onClose, onSuccess }: EditUserModa
             custom_location: user.custom_location || '',
             jingle_interval_minutes: user.jingle_interval_minutes || 7,
             my_radio_stream_url: user.my_radio_stream_url || '',
+            trial_ends_at: user.trial_ends_at || null,
         });
     }, [user]);
 
@@ -48,6 +57,7 @@ export default function EditUserModal({ user, onClose, onSuccess }: EditUserModa
             custom_location: formData.custom_location,
             jingle_interval_minutes: Number(formData.jingle_interval_minutes),
             my_radio_stream_url: formData.my_radio_stream_url ?? '',
+            trial_ends_at: formData.trial_ends_at || null,
         };
 
         try {
@@ -126,6 +136,22 @@ export default function EditUserModal({ user, onClose, onSuccess }: EditUserModa
                                 </select>
                             </div>
                         </div>
+
+                        {/* Trial expiry — shown only when status is trial */}
+                        {formData.subscription_status === 'trial' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1">
+                                    <Clock size={14} className="text-orange-400" />
+                                    Istek probnog perioda
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={toDatetimeLocal(formData.trial_ends_at)}
+                                    onChange={(e) => setFormData({ ...formData, trial_ends_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-400 outline-none"
+                                />
+                            </div>
+                        )}
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

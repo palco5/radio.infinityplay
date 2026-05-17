@@ -1,4 +1,5 @@
-import { Radio, Mail, Globe, ExternalLink } from 'lucide-react';
+import { Radio, Mail, Globe, ExternalLink, Shield, FileText, Cookie } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -6,7 +7,7 @@ export default function Footer() {
   return (
     <footer className="bg-infinity-dark-900 text-white py-12">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-8 mb-8">
           <div>
             <div className="flex items-center space-x-2 mb-4">
               <div className="w-10 h-10 bg-gradient-infinity rounded-full flex items-center justify-center">
@@ -96,15 +97,45 @@ export default function Footer() {
               </li>
             </ul>
           </div>
+
+          <div>
+            <h4 className="font-serif font-bold text-lg mb-4">Pravna dokumenta</h4>
+            <ul className="space-y-2">
+              <li>
+                <Link to="/privacy-policy" className="flex items-center gap-2 text-gray-400 hover:text-infinity-green-400 transition-colors text-sm">
+                  <Shield size={14} />
+                  Politika privatnosti
+                </Link>
+              </li>
+              <li>
+                <Link to="/terms-of-service" className="flex items-center gap-2 text-gray-400 hover:text-infinity-green-400 transition-colors text-sm">
+                  <FileText size={14} />
+                  Uslovi korišćenja
+                </Link>
+              </li>
+              <li>
+                <Link to="/cookie-policy" className="flex items-center gap-2 text-gray-400 hover:text-infinity-green-400 transition-colors text-sm">
+                  <Cookie size={14} />
+                  Politika kolačića
+                </Link>
+              </li>
+            </ul>
+          </div>
         </div>
 
         <div className="border-t border-infinity-dark-700 pt-8">
-          <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-gray-400 text-sm">
               © {currentYear} InfinityPlay Radio. Sva prava zadržana.
             </p>
-            <div className="flex items-center space-x-6">
-              <a href="https://infinityplay.rs" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-infinity-green-400 transition-colors text-sm inline-flex items-center space-x-1">
+            <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
+              <Link to="/privacy-policy" className="text-gray-400 hover:text-infinity-green-400 transition-colors">Politika privatnosti</Link>
+              <span className="text-gray-700">·</span>
+              <Link to="/terms-of-service" className="text-gray-400 hover:text-infinity-green-400 transition-colors">Uslovi korišćenja</Link>
+              <span className="text-gray-700">·</span>
+              <Link to="/cookie-policy" className="text-gray-400 hover:text-infinity-green-400 transition-colors">Kolačići</Link>
+              <span className="text-gray-700">·</span>
+              <a href="https://infinityplay.rs" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-infinity-green-400 transition-colors inline-flex items-center gap-1">
                 <span>Powered by InfinityPlay</span>
                 <ExternalLink size={12} />
               </a>

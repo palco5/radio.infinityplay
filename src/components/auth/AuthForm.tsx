@@ -25,6 +25,7 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [agreedToTerms, setAgreedToTerms] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -72,6 +73,12 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
 
                 if (!phoneNumber.trim()) {
                     setError('Broj telefona je obavezan');
+                    setLoading(false);
+                    return;
+                }
+
+                if (!agreedToTerms) {
+                    setError('Morate prihvatiti Uslove korišćenja i Politiku privatnosti');
                     setLoading(false);
                     return;
                 }
@@ -205,12 +212,46 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
                     />
                 )}
 
+                {!isLogin && (
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                        <input
+                            type="checkbox"
+                            checked={agreedToTerms}
+                            onChange={(e) => setAgreedToTerms(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 rounded border-gray-300 text-infinity-green-600 focus:ring-infinity-green-500 cursor-pointer flex-shrink-0"
+                        />
+                        <span className="text-sm text-gray-600 dark:text-gray-400 leading-snug">
+                            Prihvatam{' '}
+                            <a
+                                href="/#/terms-of-service"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-infinity-green-600 hover:underline font-medium"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                Uslove korišćenja
+                            </a>{' '}
+                            i{' '}
+                            <a
+                                href="/#/privacy-policy"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-infinity-green-600 hover:underline font-medium"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                Politiku privatnosti
+                            </a>{' '}
+                            InfinityPlay Radio platforme.
+                        </span>
+                    </label>
+                )}
+
                 <Button
                     type="submit"
                     variant="primary"
                     size="lg"
                     fullWidth
-                    disabled={loading}
+                    disabled={loading || (!isLogin && !agreedToTerms)}
                     className="mt-6"
                 >
                     {loading ? 'Učitavanje...' : isLogin ? 'Prijavi se' : 'Registruj se'}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserJingle } from '../../types';
 import { jingles as jinglesApi } from '../../lib/api';
-import { Music, Upload, Trash, Play, Pause, Hash, Volume2 } from 'lucide-react';
+import { Music, Upload, Trash, Play, Pause, Hash, Volume2, Download, Radio } from 'lucide-react';
 
 interface JingleManagementProps {
     userId: string;
@@ -195,6 +195,28 @@ export function JingleManagement({ userId, onJinglesUpdate }: JingleManagementPr
         }
     };
 
+    const handleDownload = (jingle: UserJingle) => {
+        const fileName = `${jingle.jingle_name}.mp3`;
+        if (jingle.jingle_data) {
+            const byteChars = atob(jingle.jingle_data);
+            const bytes = new Uint8Array(byteChars.length);
+            for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+            const blob = new Blob([bytes], { type: 'audio/mpeg' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(url);
+        } else if (jingle.cloudinary_url) {
+            const a = document.createElement('a');
+            a.href = jingle.cloudinary_url;
+            a.download = fileName;
+            a.target = '_blank';
+            a.click();
+        }
+    };
+
     const handleBoostSave = (jingle: UserJingle, db: number) => {
         // Persist to DB only when user releases the slider
         jinglesApi.update(jingle.id, { volume_boost_db: db }).catch(() => {
@@ -305,12 +327,21 @@ export function JingleManagement({ userId, onJinglesUpdate }: JingleManagementPr
                                 <button
                                     onClick={(e) => togglePreview(jingle, e)}
                                     className="p-2 text-gray-500 hover:text-infinity-green-600 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    title="Pregled"
                                 >
                                     {playingJingleId === jingle.id ? <Pause size={18} /> : <Play size={18} />}
                                 </button>
                                 <button
+                                    onClick={() => handleDownload(jingle)}
+                                    className="p-2 text-gray-500 hover:text-blue-500 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    title="Preuzmi džingl"
+                                >
+                                    <Download size={18} />
+                                </button>
+                                <button
                                     onClick={() => handleDelete(jingle.id)}
                                     className="p-2 text-gray-500 hover:text-red-500 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    title="Obriši"
                                 >
                                     <Trash size={18} />
                                 </button>
@@ -332,20 +363,63 @@ export function JingleManagement({ userId, onJinglesUpdate }: JingleManagementPr
                                 <label htmlFor={`active-${jingle.id}`} className="text-sm font-medium">Aktivan</label>
                             </div>
 
-                            {/* Interval — minutes only */}
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <Hash size={16} className="text-gray-400 flex-shrink-0" />
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Pusti svakih</span>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="120"
-                                    value={jingle.interval_minutes || 15}
-                                    onChange={(e) => handleUpdate(jingle.id, { interval_minutes: Math.max(1, parseInt(e.target.value) || 15) })}
-                                    className="w-16 text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 p-1 text-center"
-                                />
-                                <span className="text-sm text-gray-600 dark:text-gray-400">minuta</span>
+                            {/* Schedule Type Toggle */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">Tip:</span>
+                                <button
+                                    onClick={() => handleUpdate(jingle.id, { schedule_type: 'interval' })}
+                                    className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                                        (jingle.schedule_type || 'interval') !== 'songs'
+                                            ? 'bg-infinity-green-600 text-white shadow-sm'
+                                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                                    }`}
+                                >
+                                    <Hash size={12} />
+                                    Minuti
+                                </button>
+                                <button
+                                    onClick={() => handleUpdate(jingle.id, { schedule_type: 'songs' })}
+                                    className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                                        jingle.schedule_type === 'songs'
+                                            ? 'bg-infinity-green-600 text-white shadow-sm'
+                                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                                    }`}
+                                >
+                                    <Radio size={12} />
+                                    Pesme
+                                </button>
                             </div>
+
+                            {/* Interval input or Songs input */}
+                            {jingle.schedule_type === 'songs' ? (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Radio size={16} className="text-infinity-green-500 flex-shrink-0" />
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">Pusti posle</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="20"
+                                        value={jingle.after_songs_count || 3}
+                                        onChange={(e) => handleUpdate(jingle.id, { after_songs_count: Math.max(1, parseInt(e.target.value) || 3) })}
+                                        className="w-16 text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 p-1 text-center"
+                                    />
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">pesama</span>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Hash size={16} className="text-gray-400 flex-shrink-0" />
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">Pusti svakih</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="120"
+                                        value={jingle.interval_minutes || 15}
+                                        onChange={(e) => handleUpdate(jingle.id, { interval_minutes: Math.max(1, parseInt(e.target.value) || 15) })}
+                                        className="w-16 text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 p-1 text-center"
+                                    />
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">minuta</span>
+                                </div>
+                            )}
 
                             {/* Volume Boost */}
                             <div className="flex items-center gap-2 flex-wrap">

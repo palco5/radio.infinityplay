@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\PC\\\\OneDrive\\\\Desktop\\\\project\\\\project\\\\src\" -Recurse -File)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(node scripts/upload-api.js)",
+      "Bash(curl *)",
+      "Bash(node scripts/upload-to-loopia.js)",
+      "WebFetch(domain:media.infinityplay.rs)",
+      "Bash(npx tsc *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(git push *)",
+      "Skill(update-config)",
+      "Bash(node -e ' *)",
+      "Bash(del *)",
+      "Bash(node *)",
+      "Bash(xargs rm -v)"
+    ]
+  }
+}

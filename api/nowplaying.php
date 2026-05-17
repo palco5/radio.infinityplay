@@ -3,7 +3,23 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Cache-Control: no-cache, no-store, must-revalidate');
 
-$mount = $_GET['mount'] ?? '';
+$mount     = $_GET['mount'] ?? '';
+$streamUrl = $_GET['url']   ?? '';
+
+if ($streamUrl) {
+    // Direct stream URL mode (any Icecast/Shoutcast stream)
+    if (!preg_match('#^https?://#', $streamUrl) || strlen($streamUrl) > 512) {
+        echo json_encode(['error' => 'Invalid URL', 'title' => '']);
+        exit;
+    }
+    $title = getIcyTitle($streamUrl);
+    echo json_encode([
+        'title'     => $title,
+        'url'       => $streamUrl,
+        'timestamp' => time(),
+    ]);
+    exit;
+}
 
 if (!preg_match('/^[a-zA-Z0-9\-]+$/', $mount) || strlen($mount) > 64) {
     echo json_encode(['error' => 'Invalid mount', 'title' => '']);

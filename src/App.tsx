@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AudioProvider } from './contexts/AudioContext';
+import { useAudio } from './contexts/AudioContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import AudioPlayer from './components/player/AudioPlayer';
@@ -13,28 +14,50 @@ import SubscriptionOptionsPage from './pages/SubscriptionOptionsPage';
 import UserDashboard from './pages/UserDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsOfServicePage from './pages/TermsOfServicePage';
+import CookiePolicyPage from './pages/CookiePolicyPage';
 import ProtectedRoute from './components/routing/ProtectedRoute';
+import CookieConsent from './components/ui/CookieConsent';
+
+import { useIsStandalone } from './hooks/useIsStandalone';
 
 function AppContent() {
   const location = useLocation();
-  const isDashboard = location.pathname === '/dashboard' || location.pathname === '/admin';
+  const isStandalone = useIsStandalone();
+  const { currentStation, pause } = useAudio();
+  const isUserDashboard = location.pathname === '/dashboard';
+  const isAdmin = location.pathname === '/admin';
+  const isHome = location.pathname === '/';
+  const isDashboard = isUserDashboard || isAdmin;
   const [showAnimation, setShowAnimation] = useState(true);
-  const [animationComplete, setAnimationComplete] = useState(false);
+
+  // Stop radio when navigating away from user dashboard (to admin or home)
+  useEffect(() => {
+    if (isAdmin || isHome) {
+      pause();
+    }
+  }, [location.pathname]);
 
   const handleAnimationComplete = () => {
-    setAnimationComplete(true);
     setShowAnimation(false);
   };
+
+  // Hide Navbar/Footer if on dashboard OR if running in PWA standalone mode
+  const shouldHideLayout = isDashboard || isStandalone;
 
   return (
     <>
       {showAnimation && <PageLoadAnimation onComplete={handleAnimationComplete} />}
       <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors duration-300 smooth-scroll">
-        {!isDashboard && <Navbar />}
-        <main>
+        {!shouldHideLayout && <Navbar />}
+        <main className={isUserDashboard && currentStation ? 'pb-28' : ''}>
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+            <Route path="/cookie-policy" element={<CookiePolicyPage />} />
             <Route
               path="/payment"
               element={
@@ -69,8 +92,9 @@ function AppContent() {
             />
           </Routes>
         </main>
-        {!isDashboard && <Footer />}
-        <AudioPlayer />
+        {!shouldHideLayout && <Footer />}
+        {isUserDashboard && <AudioPlayer />}
+        {!isDashboard && <CookieConsent />}
       </div>
     </>
   );

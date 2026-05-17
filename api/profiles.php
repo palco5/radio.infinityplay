@@ -16,13 +16,17 @@ if (empty($userId)) {
 if ($method === 'GET') {
     // Users can only view their own profile unless admin
     if ($currentUser['userId'] !== $userId) {
-        $db = getDB();
-        $stmt = $db->prepare("SELECT is_admin FROM profiles WHERE id = ?");
-        $stmt->execute([$currentUser['userId']]);
-        $admin = $stmt->fetch();
+        $isAdminEmail = in_array($currentUser['email'], ['darkospira@gmail.com', 'info@infinityplay.rs']);
 
-        if (!$admin || !$admin['is_admin']) {
-            sendJSON(['error' => 'Forbidden'], 403);
+        if (!$isAdminEmail) {
+            $db = getDB();
+            $stmt = $db->prepare("SELECT is_admin FROM profiles WHERE id = ?");
+            $stmt->execute([$currentUser['userId']]);
+            $admin = $stmt->fetch();
+
+            if (!$admin || !$admin['is_admin']) {
+                sendJSON(['error' => 'Forbidden'], 403);
+            }
         }
     }
 
@@ -82,7 +86,8 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
         'jingle_url',
         'jingle_interval_minutes',
         'onboarding_completed',
-        'total_listening_minutes'
+        'total_listening_minutes',
+        'confetti_shown'
     ];
 
     // Admin-only fields
@@ -93,6 +98,8 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
             'is_admin',
             'recommended_stations',
             'trial_ends_at',
+            'trial_started_at',
+            'subscription_ends_at',
             'my_radio_stream_url'
         ];
         $allowedFields = array_merge($allowedFields, $adminFields);

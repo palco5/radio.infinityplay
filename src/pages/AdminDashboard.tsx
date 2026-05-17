@@ -23,8 +23,12 @@ import {
   Search,
   Filter,
   Ban,
-
-  Mail
+  Mail,
+  ExternalLink,
+  Timer,
+  X,
+  Smartphone,
+  Monitor
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -81,6 +85,9 @@ export default function AdminDashboard() {
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showDashboardSelector, setShowDashboardSelector] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [showExtendTrial, setShowExtendTrial] = useState(false);
+  const [extendTrialUser, setExtendTrialUser] = useState<UserProfile | null>(null);
+  const [extendTrialDate, setExtendTrialDate] = useState('');
 
   useEffect(() => {
     if (user?.email !== 'darkospira@gmail.com') {
@@ -212,6 +219,15 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleToggleHero = async (stationId: string, field: 'hero_mobile' | 'hero_desktop', currentValue: any) => {
+    try {
+      await stationsApi.update(stationId, { [field]: !Number(currentValue) });
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Error updating hero visibility:', error);
+    }
+  };
+
   const handleEditStation = (station: RadioStation) => {
     setSelectedStation(station);
     setShowEditStation(true);
@@ -280,6 +296,38 @@ export default function AdminDashboard() {
   };
 
 
+
+  const toDatetimeLocal = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const openExtendTrial = (targetUser: UserProfile) => {
+    setExtendTrialUser(targetUser);
+    const base = targetUser.trial_ends_at && new Date(targetUser.trial_ends_at) > new Date()
+      ? new Date(targetUser.trial_ends_at)
+      : new Date();
+    const defaultDate = new Date(base);
+    defaultDate.setDate(defaultDate.getDate() + 7);
+    setExtendTrialDate(toDatetimeLocal(defaultDate));
+    setShowExtendTrial(true);
+  };
+
+  const handleExtendTrial = async () => {
+    if (!extendTrialUser || !extendTrialDate) return;
+    try {
+      await profilesApi.update(extendTrialUser.id, {
+        subscription_status: 'trial',
+        trial_ends_at: new Date(extendTrialDate).toISOString(),
+      });
+      setShowExtendTrial(false);
+      setExtendTrialUser(null);
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Error extending trial:', error);
+      alert('Greška pri produženju probnog perioda.');
+    }
+  };
 
   const handleExportUsersCSV = () => {
     const csvContent = [
@@ -478,7 +526,21 @@ export default function AdminDashboard() {
                     </button>
                   </td>
                   <td className="py-3 px-4">
-                    <div className="flex items-center justify-end space-x-2">
+                    <div className="flex items-center justify-end space-x-1">
+                      <button
+                        onClick={() => handleToggleHero(station.id, 'hero_mobile', station.hero_mobile)}
+                        title={Number(station.hero_mobile) !== 0 ? 'Skloni sa mobilnog home page-a' : 'Prikaži na mobilnom home page-u'}
+                        className={`p-2 rounded-lg transition-colors ${Number(station.hero_mobile) !== 0 ? 'text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20' : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-infinity-dark-600'}`}
+                      >
+                        <Smartphone size={17} />
+                      </button>
+                      <button
+                        onClick={() => handleToggleHero(station.id, 'hero_desktop', station.hero_desktop)}
+                        title={Number(station.hero_desktop) !== 0 ? 'Skloni sa desktop home page-a' : 'Prikaži na desktop home page-u'}
+                        className={`p-2 rounded-lg transition-colors ${Number(station.hero_desktop) !== 0 ? 'text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20' : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-infinity-dark-600'}`}
+                      >
+                        <Monitor size={17} />
+                      </button>
                       <button
                         onClick={() => handleEditStation(station)}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-infinity-dark-600 rounded-lg transition-colors"
@@ -530,6 +592,20 @@ export default function AdminDashboard() {
 
               <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                 <button
+                  onClick={() => handleToggleHero(station.id, 'hero_mobile', station.hero_mobile)}
+                  title="Telefon/tablet home"
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg transition-colors text-sm font-medium ${Number(station.hero_mobile) !== 0 ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600'}`}
+                >
+                  <Smartphone size={15} />
+                </button>
+                <button
+                  onClick={() => handleToggleHero(station.id, 'hero_desktop', station.hero_desktop)}
+                  title="Desktop home"
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg transition-colors text-sm font-medium ${Number(station.hero_desktop) !== 0 ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600'}`}
+                >
+                  <Monitor size={15} />
+                </button>
+                <button
                   onClick={() => handleEditStation(station)}
                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
                 >
@@ -550,6 +626,18 @@ export default function AdminDashboard() {
       </div>
     </div>
   );
+
+  const getTrialInfo = (user: UserProfile) => {
+    if (user.subscription_status !== 'trial' || !user.trial_ends_at) return null;
+    const now = new Date();
+    const end = new Date(user.trial_ends_at);
+    const diffMs = end.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return { label: 'Istekao', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/30', urgent: true };
+    if (diffDays === 0) return { label: 'Ističe danas', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-900/30', urgent: true };
+    if (diffDays <= 2) return { label: `${diffDays}d preostalo`, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30', urgent: true };
+    return { label: `${diffDays}d preostalo`, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/30', urgent: false };
+  };
 
   const renderUsers = () => (
     <div className="space-y-6">
@@ -635,15 +723,29 @@ export default function AdminDashboard() {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <button
-                        onClick={() => handleToggleUserAccess(user.id, user.subscription_status)}
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${user.subscription_status === 'active'
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                          : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => handleToggleUserAccess(user.id, user.subscription_status)}
+                          className={`px-2 py-1 rounded-full text-xs font-medium w-fit ${
+                            user.subscription_status === 'active'
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                              : user.subscription_status === 'trial'
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                              : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
                           }`}
-                      >
-                        {user.subscription_status === 'active' ? 'Aktivan' : 'Neaktivan'}
-                      </button>
+                        >
+                          {user.subscription_status === 'active' ? 'Aktivan' : user.subscription_status === 'trial' ? 'Probni' : 'Neaktivan'}
+                        </button>
+                        {(() => {
+                          const trial = getTrialInfo(user);
+                          if (!trial) return null;
+                          return (
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit ${trial.bg} ${trial.color}`}>
+                              ⏱ {trial.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-end space-x-2">
@@ -681,6 +783,20 @@ export default function AdminDashboard() {
                           title="Preporuči stanice"
                         >
                           <Activity className="text-yellow-600" size={18} />
+                        </button>
+                        <button
+                          onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/dashboard?adminView=${user.id}&t=${sessionStorage.getItem('auth_token') || ''}`, '_blank')}
+                          className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                          title="Otvori dashboard korisnika"
+                        >
+                          <ExternalLink className="text-blue-500" size={18} />
+                        </button>
+                        <button
+                          onClick={() => openExtendTrial(user)}
+                          className="p-2 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
+                          title="Produži probni period"
+                        >
+                          <Timer className="text-orange-500" size={18} />
                         </button>
                       </div>
                     </td>
@@ -720,15 +836,29 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleToggleUserAccess(user.id, user.subscription_status)}
-                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide shrink-0 transition-colors ${user.subscription_status === 'active'
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <button
+                      onClick={() => handleToggleUserAccess(user.id, user.subscription_status)}
+                      className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                        user.subscription_status === 'active'
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                          : user.subscription_status === 'trial'
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                          : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
                       }`}
-                  >
-                    {user.subscription_status === 'active' ? 'Aktivan' : 'Neaktivan'}
-                  </button>
+                    >
+                      {user.subscription_status === 'active' ? 'Aktivan' : user.subscription_status === 'trial' ? 'Probni' : 'Neaktivan'}
+                    </button>
+                    {(() => {
+                      const trial = getTrialInfo(user);
+                      if (!trial) return null;
+                      return (
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${trial.bg} ${trial.color}`}>
+                          ⏱ {trial.label}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 {/* Info Grid */}
@@ -756,7 +886,7 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Actions */}
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => { setSelectedUser(user); setShowEditUser(true); }}
                     className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-gray-50 dark:bg-infinity-dark-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-infinity-dark-600 transition-colors"
@@ -772,21 +902,33 @@ export default function AdminDashboard() {
                     <span className="text-[10px] font-medium">Reset</span>
                   </button>
                   <button
+                    onClick={() => openExtendTrial(user)}
+                    className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-orange-50 dark:bg-orange-900/10 text-orange-500 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/20 transition-colors"
+                  >
+                    <Timer size={16} />
+                    <span className="text-[10px] font-medium">Trial</span>
+                  </button>
+                  <button
                     onClick={() => handleAssignFreePlan(user.id)}
                     className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-green-50 dark:bg-green-900/10 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/20 transition-colors"
                   >
                     <DollarSign size={16} />
                     <span className="text-[10px] font-medium">Plan</span>
                   </button>
-                  <div className="relative group">
-                    <button
-                      onClick={() => handleRecommendStations(user)}
-                      className="w-full h-full flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/10 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/20 transition-colors"
-                    >
-                      <Activity size={16} />
-                      <span className="text-[10px] font-medium">Preporuke</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleRecommendStations(user)}
+                    className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/10 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/20 transition-colors"
+                  >
+                    <Activity size={16} />
+                    <span className="text-[10px] font-medium">Preporuke</span>
+                  </button>
+                  <button
+                    onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/dashboard?adminView=${user.id}&t=${sessionStorage.getItem('auth_token') || ''}`, '_blank')}
+                    className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/10 text-blue-500 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors"
+                  >
+                    <ExternalLink size={16} />
+                    <span className="text-[10px] font-medium">Dashboard</span>
+                  </button>
                 </div>
               </div>
             </Card>
@@ -1335,6 +1477,93 @@ export default function AdminDashboard() {
         isOpen={showDashboardSelector}
         onClose={() => setShowDashboardSelector(false)}
       />
+
+      {/* Extend Trial Modal */}
+      {showExtendTrial && extendTrialUser && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <Timer className="text-orange-500" size={20} />
+                <h2 className="font-bold text-gray-900 dark:text-white">Produži probni period</h2>
+              </div>
+              <button
+                onClick={() => { setShowExtendTrial(false); setExtendTrialUser(null); }}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-0.5">Korisnik</p>
+                <p className="font-semibold text-gray-900 dark:text-white">
+                  {extendTrialUser.display_name || extendTrialUser.email}
+                </p>
+                {extendTrialUser.trial_ends_at && (
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Trenutni istek: {new Date(extendTrialUser.trial_ends_at).toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
+              </div>
+
+              {/* Quick presets */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Brzi odabir</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[7, 14, 30].map(days => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + days);
+                    const pad = (n: number) => String(n).padStart(2, '0');
+                    const val = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                    return (
+                      <button
+                        key={days}
+                        onClick={() => setExtendTrialDate(val)}
+                        className={`py-2 rounded-lg text-sm font-medium border-2 transition-colors ${
+                          extendTrialDate === val
+                            ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400'
+                            : 'border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-orange-300'
+                        }`}
+                      >
+                        +{days} dana
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom date */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Prilagođeni datum</p>
+                <input
+                  type="datetime-local"
+                  value={extendTrialDate}
+                  onChange={(e) => setExtendTrialDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-400 outline-none text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 p-5 pt-0">
+              <button
+                onClick={() => { setShowExtendTrial(false); setExtendTrialUser(null); }}
+                className="flex-1 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm font-medium"
+              >
+                Otkaži
+              </button>
+              <button
+                onClick={handleExtendTrial}
+                disabled={!extendTrialDate}
+                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-400 text-white rounded-xl transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                Sačuvaj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

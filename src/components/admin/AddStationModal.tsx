@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { stations as stationsApi } from '../../lib/api';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
-import { Radio, AlertCircle, CheckCircle, Music } from 'lucide-react';
+import { Radio, AlertCircle, CheckCircle, Music, Upload, X } from 'lucide-react';
 import MUSIC_GENRES from '../../lib/genres';
 import { getGenreStyle } from '../../lib/genreBackgrounds';
+import { resizeImageToBase64 } from '../../lib/imageUtils';
 
 const PRESET_COLORS = [
   { label: 'Narandžasta', value: '#f97316' },
@@ -80,6 +81,24 @@ export default function AddStationModal({ isOpen, onClose, onSuccess }: AddStati
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [customPlaceInput, setCustomPlaceInput] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoFileRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const base64 = await resizeImageToBase64(file, 400, 0.8);
+      setFormData(prev => ({ ...prev, logo_url: base64 }));
+    } catch {
+      setError('Greška pri obradi slike. Pokušajte sa drugom slikom.');
+    } finally {
+      setUploadingLogo(false);
+      if (logoFileRef.current) logoFileRef.current.value = '';
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,31 +265,61 @@ export default function AddStationModal({ isOpen, onClose, onSuccess }: AddStati
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Logo URL (opciono)
+            Logo stanice (opciono)
           </label>
-          <Input
-            type="url"
-            value={formData.logo_url}
-            onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
-            placeholder="https://example.com/logo.png"
-          />
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              value={formData.logo_url.startsWith('data:') ? '' : formData.logo_url}
+              onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
+              placeholder="https://example.com/logo.png"
+              disabled={formData.logo_url.startsWith('data:')}
+              className={formData.logo_url.startsWith('data:') ? 'opacity-50' : ''}
+            />
+            <input
+              ref={logoFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleLogoUpload}
+            />
+            <button
+              type="button"
+              onClick={() => logoFileRef.current?.click()}
+              disabled={uploadingLogo}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors whitespace-nowrap disabled:opacity-60"
+            >
+              <Upload size={15} />
+              {uploadingLogo ? 'Obrada...' : 'Otpremi'}
+            </button>
+          </div>
+
           {formData.logo_url && (
             <div className="mt-3 p-3 bg-gray-50 dark:bg-infinity-dark-700 rounded-xl border border-gray-200 dark:border-gray-600">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Pregled logoa:</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {formData.logo_url.startsWith('data:') ? '✅ Otpremljena slika' : 'Pregled logoa'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, logo_url: '' })}
+                  className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
+                >
+                  <X size={12} /> Ukloni
+                </button>
+              </div>
               <div className="w-full h-32 bg-white dark:bg-infinity-dark-800 rounded-lg flex items-center justify-center overflow-hidden">
                 <img
                   src={formData.logo_url}
                   alt="Logo preview"
                   className="max-w-full max-h-full object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
               </div>
             </div>
           )}
           <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-            Unesite URL slike koja će se prikazati kao logo stanice
+            Unesite URL slike ili kliknite "Otpremi" da uploadujete sa računara
           </p>
         </div>
 
@@ -395,6 +444,61 @@ export default function AddStationModal({ isOpen, onClose, onSuccess }: AddStati
               </label>
             ))}
           </div>
+
+          {/* Custom mesta */}
+          <div className="mt-3 p-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-infinity-dark-700">
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Dodaj prilagođeno mesto:</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={customPlaceInput}
+                onChange={(e) => setCustomPlaceInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const val = customPlaceInput.trim();
+                    if (val && !formData.recommended_for.includes(val)) {
+                      setFormData({ ...formData, recommended_for: [...formData.recommended_for, val] });
+                    }
+                    setCustomPlaceInput('');
+                  }
+                }}
+                placeholder="Npr. Frizerski salon, Pekara..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-infinity-dark-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-infinity-green-500 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const val = customPlaceInput.trim();
+                  if (val && !formData.recommended_for.includes(val)) {
+                    setFormData({ ...formData, recommended_for: [...formData.recommended_for, val] });
+                  }
+                  setCustomPlaceInput('');
+                }}
+                className="px-3 py-2 bg-infinity-green-600 hover:bg-infinity-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Dodaj
+              </button>
+            </div>
+            {/* Prikaz custom unosa */}
+            {formData.recommended_for.filter(t => !businessTypes.includes(t)).length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {formData.recommended_for.filter(t => !businessTypes.includes(t)).map((custom) => (
+                  <span key={custom} className="flex items-center gap-1 px-2 py-1 bg-infinity-green-100 dark:bg-infinity-green-900/30 text-infinity-green-700 dark:text-infinity-green-400 text-xs rounded-full">
+                    {custom}
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, recommended_for: formData.recommended_for.filter(t => t !== custom) })}
+                      className="hover:text-red-600 dark:hover:text-red-400 transition-colors font-bold"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
             Izaberite tipove objekata za koje je ova stanica preporučena
           </p>

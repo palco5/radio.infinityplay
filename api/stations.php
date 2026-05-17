@@ -6,6 +6,13 @@ setCORSHeaders();
 $method = $_SERVER['REQUEST_METHOD'];
 $db = getDB();
 
+// Self-heal: extend logo_url to MEDIUMTEXT to support base64 uploads, add hero columns
+try {
+    $db->exec("ALTER TABLE stations MODIFY COLUMN logo_url MEDIUMTEXT NULL");
+    $db->exec("ALTER TABLE stations ADD COLUMN IF NOT EXISTS hero_mobile TINYINT(1) NOT NULL DEFAULT 1");
+    $db->exec("ALTER TABLE stations ADD COLUMN IF NOT EXISTS hero_desktop TINYINT(1) NOT NULL DEFAULT 1");
+} catch (Exception $e) { /* ignore */ }
+
 // Get all stations
 if ($method === 'GET') {
     $id = isset($_GET['id']) ? $_GET['id'] : null;
@@ -30,7 +37,7 @@ if ($method === 'GET') {
             SELECT id, name, description, genre, logo_url, stream_url, bitrate,
                    is_featured, listener_count, icon_url, icon_emoji, background_url,
                    background_color, background_type, grid_row, grid_column, grid_page,
-                   recommended_for, created_at, is_active
+                   recommended_for, created_at, is_active, hero_mobile, hero_desktop
             FROM stations
             ORDER BY grid_page, grid_row, grid_column
         ");
@@ -131,31 +138,20 @@ if ($method === 'PUT') {
     $values = [];
 
     $allowedFields = [
-        'name',
-        'description',
-        'genre',
-        'logo_url',
-        'stream_url',
-        'bitrate',
-        'is_featured',
-        'icon_url',
-        'icon_emoji',
-        'background_url',
-        'background_color',
-        'background_type',
-        'grid_row',
-        'grid_column',
-        'grid_page',
-        'recommended_for',
-        'is_active'
+        'name', 'description', 'genre', 'logo_url', 'stream_url', 'bitrate',
+        'is_featured', 'icon_url', 'icon_emoji', 'background_url',
+        'background_color', 'background_type', 'grid_row', 'grid_column', 'grid_page',
+        'recommended_for', 'is_active', 'hero_mobile', 'hero_desktop'
     ];
+
+    $boolFields = ['is_featured', 'is_active', 'hero_mobile', 'hero_desktop'];
 
     foreach ($allowedFields as $field) {
         if (isset($data[$field])) {
             $fields[] = "$field = ?";
             if ($field === 'recommended_for') {
                 $values[] = json_encode($data[$field]);
-            } elseif ($field === 'is_featured' || $field === 'is_active') {
+            } elseif (in_array($field, $boolFields)) {
                 $values[] = (int) $data[$field];
             } else {
                 $values[] = $data[$field];

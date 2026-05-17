@@ -9,6 +9,8 @@ export interface RadioStation {
   bitrate: number;
   is_featured: boolean;
   is_active: boolean;
+  hero_mobile: boolean;
+  hero_desktop: boolean;
   listener_count: number;
   icon_url: string | null;
   icon_emoji: string;

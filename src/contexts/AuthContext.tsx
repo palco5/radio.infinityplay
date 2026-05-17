@@ -27,6 +27,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Bootstrap token iz URL hasha (za admin view novi tab)
+  useEffect(() => {
+    const hash = window.location.hash;
+    const queryString = hash.includes('?') ? hash.split('?')[1] : '';
+    const urlParams = new URLSearchParams(queryString);
+    const tokenFromUrl = urlParams.get('t');
+    if (tokenFromUrl) {
+      sessionStorage.setItem('auth_token', tokenFromUrl);
+      // Ukloni token iz URL-a
+      urlParams.delete('t');
+      const newHash = hash.split('?')[0] + (urlParams.toString() ? '?' + urlParams.toString() : '');
+      window.history.replaceState(null, '', window.location.pathname + window.location.search + newHash);
+    }
+  }, []);
+
   const refreshProfile = async () => {
     if (user) {
       try {

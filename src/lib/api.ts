@@ -5,7 +5,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // Helper function for API calls
 async function apiCall(endpoint: string, options: RequestInit = {}) {
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
 
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -50,7 +50,7 @@ export const auth = {
         });
 
         if (data.token) {
-            localStorage.setItem('auth_token', data.token);
+            sessionStorage.setItem('auth_token', data.token);
         }
 
         return data;
@@ -63,7 +63,7 @@ export const auth = {
         });
 
         if (data.token) {
-            localStorage.setItem('auth_token', data.token);
+            sessionStorage.setItem('auth_token', data.token);
         }
 
         return data;
@@ -74,7 +74,7 @@ export const auth = {
             const data = await apiCall('/auth.php?path=me');
             return data.user;
         } catch (error) {
-            localStorage.removeItem('auth_token');
+            sessionStorage.removeItem('auth_token');
             return null;
         }
     },
@@ -85,7 +85,7 @@ export const auth = {
     },
 
     logout() {
-        localStorage.removeItem('auth_token');
+        sessionStorage.removeItem('auth_token');
     },
 };
 
@@ -203,6 +203,20 @@ export const jingles = {
             method: 'DELETE',
         });
         return data;
+    },
+};
+
+// Now Playing API — fetches ICY metadata (song title) from any stream
+export const nowplaying = {
+    async getTitle(streamUrl: string): Promise<string> {
+        try {
+            const response = await fetch(`${API_URL}/nowplaying.php?url=${encodeURIComponent(streamUrl)}`);
+            if (!response.ok) return '';
+            const data = await response.json();
+            return data.title || '';
+        } catch {
+            return '';
+        }
     },
 };
 
