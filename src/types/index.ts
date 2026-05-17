@@ -23,39 +23,61 @@ export interface RadioStation {
   updated_at: string;
 }
 
+export type ScheduleType = 'interval' | 'songs' | 'time';
+
+export interface UserJingle {
+  id: string;
+  user_id: string;
+  jingle_name: string;
+  cloudinary_url?: string;
+  cloudinary_public_id?: string;
+  jingle_data?: string; // Base64 encoded audio data
+  storage_type?: 'cloudinary' | 'base64';
+  duration_seconds: number;
+  file_size_bytes: number;
+  play_order: number;
+  is_active: boolean;
+  schedule_type: ScheduleType;
+  interval_minutes?: number;
+  after_songs_count?: number;
+  time_start?: string;
+  time_end?: string;
+  volume_boost_db?: number;
+  created_at: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
-  username: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
-  bio: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  phone_number: string | null;
-  country_code: string;
-  subscription_tier: 'free' | 'ad-free' | 'branded-radio';
-  subscription_status: 'active' | 'inactive' | 'cancelled' | 'trial';
-  subscription_ends_at: string | null;
-  trial_ends_at: string | null;
-  trial_started_at: string | null;
-  cancel_at_period_end: boolean;
-  theme_preference: 'light' | 'dark';
-  total_listening_minutes: number;
-  created_at: string;
-  updated_at: string;
-  is_admin: boolean;
-  newsletter_subscribed: boolean;
+  display_name: string;
+  username: string; // Add username field
+  first_name: string; // Add first_name field
+  last_name: string; // Add last_name field
+  avatar_url?: string;
+  bio?: string;
+  phone_number?: string;
+  country_code?: string;
+  subscription_tier: 'none' | 'free' | 'basic-radio' | 'branded-radio' | 'host-radio';
+  subscription_status: 'active' | 'inactive' | 'trial' | 'expired';
+  theme_preference: 'light' | 'dark' | 'system';
   email_notifications: boolean;
-  business_category: string | null;
-  custom_location: string | null; // Korisnik unosi gde će puštati radio ako izabere "Ostalo"
-  selected_plan_id: string | null;
-  onboarding_completed: boolean;
+  business_category: string;
+  custom_location?: string;
+  jingle_url?: string;
+  jingle_interval_minutes: number;
+  my_radio_stream_url?: string;
+  newsletter_subscribed?: boolean;
+  cancel_at_period_end?: boolean;
+  trial_ui_config?: any;
+  recommended_stations?: string[];
+  created_at?: string;
+  subscription_ends_at?: string;
+  trial_ends_at?: string;
+  trial_started_at?: string;
+  is_admin: boolean;
   confetti_shown: boolean;
-  trial_ui_config: TrialUIConfig | null;
-  recommended_stations: string[]; // ID-jevi stanica koje admin preporučuje ovom korisniku
-  jingle_url: string | null; // URL do mp3 fajla za džingl
-  jingle_interval_minutes: number; // Interval u minutima za puštanje džingla (default: 7)
+  onboarding_completed: boolean;
+  total_listening_minutes: number;
 }
 
 export interface TrialUIConfig {

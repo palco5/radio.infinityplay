@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { localAuth } from '../../lib/localStorage';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
-import { CreditCard, Calendar, DollarSign, Check, AlertCircle, X } from 'lucide-react';
+import { CreditCard, Calendar, DollarSign, Check, AlertCircle } from 'lucide-react';
 
 interface SubscriptionManagementProps {
   isOpen: boolean;
@@ -22,35 +21,62 @@ interface Subscription {
 }
 
 export default function SubscriptionManagement({ isOpen, onClose }: SubscriptionManagementProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState('');
-  const [error, setError] = useState('');
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [success] = useState('');
+  const [error] = useState('');
 
   useEffect(() => {
-    if (isOpen && user) {
+    if (isOpen && user && profile) {
       fetchSubscription();
     }
-  }, [isOpen, user]);
+  }, [isOpen, user, profile]);
 
   const fetchSubscription = async () => {
-    if (!user) return;
-
-    const profile = localAuth.getProfile(user.id);
+    if (!user || !profile) return;
 
     if (profile && profile.subscription_tier !== 'free') {
-      // Mock subscription object from profile
+      let tier: string = profile.subscription_tier;
+      // Force trial tier if status is trial, regardless of database tier
+      if (profile.subscription_status === 'trial') {
+        tier = 'trial';
+      } else {
+        // Normalize tier names
+        if (tier === 'basic-radio' || tier === 'ad-free') tier = 'basic';
+        if (tier === 'branded-radio') tier = 'branded';
+        if (tier === 'host-radio') tier = 'host';
+      }
+
+      let nextBillingDate = profile.subscription_ends_at || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Handle Trial Display Logic
+      if (profile.subscription_status === 'trial') {
+        // Determine the most relevant end date we have
+        let targetDate = profile.trial_ends_at
+          ? new Date(profile.trial_ends_at)
+          : (profile.subscription_ends_at ? new Date(profile.subscription_ends_at) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+
+        const now = Date.now();
+        const diffDays = (targetDate.getTime() - now) / (1000 * 3600 * 24);
+
+        if (diffDays > 9) {
+          if (profile.trial_started_at) {
+            targetDate = new Date(new Date(profile.trial_started_at).getTime() + 7 * 24 * 60 * 60 * 1000);
+          } else {
+            targetDate = new Date(now + 7 * 24 * 60 * 60 * 1000);
+          }
+        }
+        nextBillingDate = targetDate.toISOString();
+      }
+
       const mockSubscription: Subscription = {
         id: `sub-${user.id}`,
-        tier: profile.subscription_tier === 'branded-radio' ? 'branded' :
-          profile.subscription_tier === 'ad-free' ? 'basic' : 'host',
+        tier: tier,
         status: profile.subscription_status,
         auto_renew: profile.subscription_status === 'active',
-        next_billing_date: profile.subscription_ends_at || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        trial_ends_at: profile.trial_ends_at,
-        created_at: profile.created_at,
+        next_billing_date: nextBillingDate,
+        trial_ends_at: profile.trial_ends_at || null,
+        created_at: profile.created_at || new Date().toISOString(),
       };
       setSubscription(mockSubscription);
     } else {
@@ -58,92 +84,36 @@ export default function SubscriptionManagement({ isOpen, onClose }: Subscription
     }
   };
 
-  const handleCancelSubscription = async () => {
-    if (!user || !subscription) return;
-
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      const profile = localAuth.getProfile(user.id);
-      const isInTrial = profile?.subscription_status === 'trial' &&
-        profile?.trial_ends_at &&
-        new Date(profile.trial_ends_at) > new Date();
-
-      if (isInTrial) {
-        // Mark for cancellation at trial end
-        const updated = localAuth.updateProfile(user.id, {
-          cancel_at_period_end: true,
-        });
-
-        if (!updated) throw new Error('Greška pri otkazivanju pretplate');
-
-        setSuccess('Pretplata će biti otkazana nakon isteka probnog perioda. Nećete biti naplaćeni.');
-      } else {
-        // Regular subscription cancellation
-        const updated = localAuth.updateProfile(user.id, {
-          subscription_status: 'cancelled',
-          cancel_at_period_end: true,
-        });
-
-        if (!updated) throw new Error('Greška pri otkazivanju pretplate');
-
-        setSuccess('Pretplata uspešno otkazana! Vaša pretplata će biti aktivna do kraja billing perioda.');
-      }
-
-      setShowCancelConfirm(false);
-      fetchSubscription();
-    } catch (err: any) {
-      setError(err.message || 'Greška pri otkazivanju pretplate');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReactivateSubscription = async () => {
-    if (!user || !subscription) return;
-
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      const updated = localAuth.updateProfile(user.id, {
-        subscription_status: 'active',
-      });
-
-      if (!updated) throw new Error('Greška pri reaktivaciji pretplate');
-
-      setSuccess('Pretplata uspešno reaktivirana!');
-      fetchSubscription();
-    } catch (err: any) {
-      setError(err.message || 'Greška pri reaktivaciji pretplate');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const getTierName = (tier: string) => {
     switch (tier) {
+      case 'trial':
+        return 'PROBNI PAKET';
       case 'basic':
+      case 'basic-radio':
         return 'BASIC RADIO';
       case 'branded':
+      case 'branded-radio':
         return 'BRANDED RADIO';
       case 'host':
+      case 'host-radio':
         return 'HOST RADIO';
       default:
-        return 'Besplatan';
+        return tier.toUpperCase().replace('-', ' ') || 'BESPLATAN';
     }
   };
 
   const getTierPrice = (tier: string) => {
     switch (tier) {
+      case 'trial':
+        return '0€';
       case 'basic':
+      case 'basic-radio':
         return '15€';
       case 'branded':
+      case 'branded-radio':
         return '35€';
       case 'host':
+      case 'host-radio':
         return '195€';
       default:
         return '0€';
@@ -191,14 +161,19 @@ export default function SubscriptionManagement({ isOpen, onClose }: Subscription
                 </div>
 
                 <div className="space-y-3">
+
                   <div className="flex items-center">
                     <div className="w-10 h-10 bg-gradient-to-br from-infinity-green-400 to-infinity-green-600 rounded-lg flex items-center justify-center mr-3">
                       <CreditCard className="text-white" size={20} />
                     </div>
                     <div>
                       <p className="text-sm text-gray-600 dark:text-gray-400">Status Pretplate</p>
-                      <p className={`font-bold ${subscription.status === 'active' ? 'text-green-600' : 'text-red-600'}`}>
-                        {subscription.status === 'active' ? 'Aktivna' : 'Otkazana'}
+                      <p className={`font-bold ${subscription.status === 'active' || subscription.status === 'trial' ? 'text-green-600' : 'text-red-600'}`}>
+                        {subscription.status === 'active'
+                          ? 'Aktivna'
+                          : subscription.status === 'trial'
+                            ? 'PROBNI PERIOD (TRIAL)'
+                            : 'Otkazana'}
                       </p>
                     </div>
                   </div>
@@ -222,14 +197,14 @@ export default function SubscriptionManagement({ isOpen, onClose }: Subscription
                   </div>
 
                   {subscription.trial_ends_at && (
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-purple-600 rounded-lg flex items-center justify-center mr-3">
+                    <div className="flex items-center bg-purple-50 dark:bg-purple-900/20 p-2 rounded-lg border border-purple-200 dark:border-purple-800">
+                      <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-purple-600 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
                         <DollarSign className="text-white" size={20} />
                       </div>
                       <div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Probni period do</p>
+                        <p className="text-xs text-purple-600 dark:text-purple-400 font-bold uppercase">Probni period aktivan</p>
                         <p className="font-bold text-gray-900 dark:text-white">
-                          {new Date(subscription.trial_ends_at).toLocaleDateString('sr-RS', {
+                          Ističe: {new Date(subscription.trial_ends_at).toLocaleDateString('sr-RS', {
                             day: 'numeric',
                             month: 'long',
                             year: 'numeric'
@@ -238,93 +213,20 @@ export default function SubscriptionManagement({ isOpen, onClose }: Subscription
                       </div>
                     </div>
                   )}
-
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-orange-600 rounded-lg flex items-center justify-center mr-3">
-                      <DollarSign className="text-white" size={20} />
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Automatsko Obnavljanje</p>
-                      <p className={`font-bold ${subscription.auto_renew ? 'text-green-600' : 'text-gray-600'}`}>
-                        {subscription.auto_renew ? 'Uključeno' : 'Isključeno'}
-                      </p>
-                    </div>
-                  </div>
                 </div>
               </div>
             </Card>
 
-            {!showCancelConfirm ? (
-              <div className="space-y-3">
-                {subscription.status === 'active' ? (
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    fullWidth
-                    onClick={() => setShowCancelConfirm(true)}
-                  >
-                    <X size={20} className="mr-2" />
-                    Otkaži Pretplatu
-                  </Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    fullWidth
-                    onClick={handleReactivateSubscription}
-                    disabled={loading}
-                  >
-                    {loading ? 'Reaktivacija...' : 'Reaktiviraj Pretplatu'}
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  fullWidth
-                  onClick={onClose}
-                >
-                  Zatvori
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  fullWidth
-                  onClick={() => window.location.href = '/#pricing'}
-                >
-                  Promeni Paket
-                </Button>
-              </div>
-            ) : (
-              <div className="bg-red-50 dark:bg-red-900/20 p-6 rounded-2xl border-2 border-red-500">
-                <h4 className="text-lg font-bold text-red-700 dark:text-red-400 mb-3">
-                  Da li ste sigurni?
-                </h4>
-                <p className="text-gray-700 dark:text-gray-300 mb-4">
-                  Vaša pretplata će biti otkazana, ali će ostati aktivna do kraja billing perioda ({new Date(subscription.next_billing_date).toLocaleDateString('sr-RS')}). Nećete moći da pristupite premium sadržaju nakon tog datuma.
-                </p>
-                <div className="flex space-x-3">
-                  <Button
-                    variant="ghost"
-                    size="lg"
-                    fullWidth
-                    onClick={() => setShowCancelConfirm(false)}
-                    disabled={loading}
-                  >
-                    Ne, Zadrži Pretplatu
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    fullWidth
-                    onClick={handleCancelSubscription}
-                    disabled={loading}
-                    className="bg-red-600 hover:bg-red-700"
-                  >
-                    {loading ? 'Otkazivanje...' : 'Da, Otkaži'}
-                  </Button>
-                </div>
-              </div>
-            )}
+            <div className="mt-6">
+              <Button
+                variant="ghost"
+                size="lg"
+                fullWidth
+                onClick={onClose}
+              >
+                Zatvori
+              </Button>
+            </div>
           </>
         ) : (
           <div className="text-center py-8">

@@ -1,9 +1,27 @@
 import { useState } from 'react';
-import { localStations } from '../../lib/localStorage';
+import { stations as stationsApi } from '../../lib/api';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
-import { Radio, AlertCircle, CheckCircle } from 'lucide-react';
+import { Radio, AlertCircle, CheckCircle, Music } from 'lucide-react';
+import MUSIC_GENRES from '../../lib/genres';
+import { getGenreStyle } from '../../lib/genreBackgrounds';
+
+const PRESET_COLORS = [
+  { label: 'Narandžasta', value: '#f97316' },
+  { label: 'Crvena', value: '#ef4444' },
+  { label: 'Ružičasta', value: '#ec4899' },
+  { label: 'Ljubičasta', value: '#8b5cf6' },
+  { label: 'Indigo', value: '#6366f1' },
+  { label: 'Plava', value: '#3b82f6' },
+  { label: 'Cijan', value: '#06b6d4' },
+  { label: 'Tirkiz', value: '#14b8a6' },
+  { label: 'Zelena', value: '#22c55e' },
+  { label: 'Žuta', value: '#eab308' },
+  { label: 'Žutomrka', value: '#f59e0b' },
+  { label: 'Siva', value: '#6b7280' },
+  { label: 'Tamna', value: '#1f2937' },
+];
 
 interface AddStationModalProps {
   isOpen: boolean;
@@ -11,27 +29,53 @@ interface AddStationModalProps {
   onSuccess: () => void;
 }
 
-const genres = [
-  'Pop', 'Rock', 'Jazz', 'Classical', 'Electronic', 'Hip Hop', 'R&B',
-  'Country', 'Folk', 'Reggae', 'Blues', 'Metal', 'Indie', 'Dance',
-  'Latin', 'World Music', 'Ambient', 'Chill', 'Lounge', 'Retro'
-];
-
 const businessTypes = [
-  'Restoran', 'Kafić', 'Bar', 'Teretana', 'Hotel', 'Prodavnica',
-  'Salon lepote', 'Spa centar', 'Kancelarija', 'Noćni klub',
-  'Lounge bar', 'Shopping centar', 'Medicinski centar'
+  // Ugostiteljstvo - Restorani
+  'Restoran', 'Italijanski restoran', 'Pizzeria', 'Fast food', 'Picerija',
+  'Kineski restoran', 'Japanski restoran', 'Meksički restoran', 'Grill restoran',
+  'Riblji restoran', 'Vegetarijanski restoran', 'Vegan restoran',
+
+  // Ugostiteljstvo - Barovi i kafići
+  'Kafić', 'Bar', 'Pub', 'Lounge bar', 'Cocktail bar', 'Wine bar',
+  'Sports bar', 'Beach bar', 'Rooftop bar', 'Noćni klub', 'Disco klub',
+
+  // Hoteli i smeštaj
+  'Hotel', 'Boutique hotel', 'Hostel', 'Motel', 'Apartmani', 'Lobby bar',
+
+  // Wellness i fitness
+  'Teretana', 'Fitness centar', 'Joga studio', 'Pilates studio', 'Crossfit sala',
+  'Spa centar', 'Wellness centar', 'Salon lepote', 'Frizerski salon', 'Barbershop',
+  'Masažni salon', 'Sauna', 'Bazen',
+
+  // Prodaja
+  'Prodavnica', 'Shopping centar', 'Butik', 'Supermarket', 'Knjižara',
+  'Cvećara', 'Apoteka', 'Parfumerija', 'Sportska prodavnica', 'Auto salon',
+
+  // Kancelarije i poslovanje
+  'Kancelarija', 'Coworking prostor', 'Banka', 'Osiguravajuća kuća',
+  'Advokatska kancelarija', 'Računovodstvena agencija',
+
+  // Zdravstvo
+  'Medicinski centar', 'Stomatološka ordinacija', 'Veterinarska ambulanta',
+  'Laboratorija', 'Fizikalna terapija',
+
+  // Ostalo
+  'Autoperionica', 'Benzinska pumpa', 'Bioskop', 'Pozorište', 'Galerija',
+  'Muzej', 'Biblioteka', 'Igraonica za decu', 'Escape room', 'Bowling',
+  'Kladionica', 'Casino', 'Taxi služba', 'Rent-a-car', 'Turistička agencija'
 ];
 
 export default function AddStationModal({ isOpen, onClose, onSuccess }: AddStationModalProps) {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    genre: 'Pop',
+    genres: [] as string[],
     stream_url: '',
+    logo_url: '',
     bitrate: 128,
     is_featured: false,
     recommended_for: [] as string[],
+    icon_color: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -52,14 +96,19 @@ export default function AddStationModal({ isOpen, onClose, onSuccess }: AddStati
       return;
     }
 
+    if (formData.genres.length === 0) {
+      setError('Morate odabrati bar jedan žanr');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      localStations.create({
+      await stationsApi.create({
         name: formData.name.trim(),
         description: formData.description.trim() || null,
-        genre: formData.genre,
-        logo_url: null,
+        genre: formData.genres.join(', '),
+        logo_url: formData.logo_url.trim() || null,
         stream_url: formData.stream_url.trim(),
         medicp_id: null,
         bitrate: formData.bitrate,
@@ -69,8 +118,8 @@ export default function AddStationModal({ isOpen, onClose, onSuccess }: AddStati
         icon_url: null,
         icon_emoji: '🎵',
         background_url: null,
-        background_color: '#10b981',
-        background_type: 'solid',
+        background_color: formData.icon_color || null,
+        background_type: formData.icon_color ? 'solid' : null,
         grid_row: null,
         grid_column: null,
         grid_page: 1,
@@ -94,11 +143,13 @@ export default function AddStationModal({ isOpen, onClose, onSuccess }: AddStati
     setFormData({
       name: '',
       description: '',
-      genre: 'Pop',
+      genres: [],
       stream_url: '',
+      logo_url: '',
       bitrate: 128,
       is_featured: false,
       recommended_for: [],
+      icon_color: '',
     });
     setError('');
     setSuccess('');
@@ -154,17 +205,30 @@ export default function AddStationModal({ isOpen, onClose, onSuccess }: AddStati
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Žanr
+            Žanrovi {formData.genres.length > 0 && `(${formData.genres.length} odabrano)`}
           </label>
-          <select
-            value={formData.genre}
-            onChange={(e) => setFormData({ ...formData, genre: e.target.value })}
-            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-infinity-dark-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-infinity-green-500 outline-none"
-          >
-            {genres.map((genre) => (
-              <option key={genre} value={genre}>{genre}</option>
+          <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-infinity-dark-700">
+            {MUSIC_GENRES.map((genre) => (
+              <label key={genre} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-infinity-dark-600 p-2 rounded-lg transition-colors">
+                <input
+                  type="checkbox"
+                  checked={formData.genres.includes(genre)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setFormData({ ...formData, genres: [...formData.genres, genre] });
+                    } else {
+                      setFormData({ ...formData, genres: formData.genres.filter(g => g !== genre) });
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-gray-300 text-infinity-green-600 focus:ring-infinity-green-500"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">{genre}</span>
+              </label>
             ))}
-          </select>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+            Izaberite jedan ili više žanrova koji najbolje opisuju ovu stanicu
+          </p>
         </div>
 
         <div>
@@ -178,6 +242,106 @@ export default function AddStationModal({ isOpen, onClose, onSuccess }: AddStati
             placeholder="https://stream.example.com/radio.mp3"
             required
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Logo URL (opciono)
+          </label>
+          <Input
+            type="url"
+            value={formData.logo_url}
+            onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
+            placeholder="https://example.com/logo.png"
+          />
+          {formData.logo_url && (
+            <div className="mt-3 p-3 bg-gray-50 dark:bg-infinity-dark-700 rounded-xl border border-gray-200 dark:border-gray-600">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Pregled logoa:</p>
+              <div className="w-full h-32 bg-white dark:bg-infinity-dark-800 rounded-lg flex items-center justify-center overflow-hidden">
+                <img
+                  src={formData.logo_url}
+                  alt="Logo preview"
+                  className="max-w-full max-h-full object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+            Unesite URL slike koja će se prikazati kao logo stanice
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Boja Ikonice (opciono)
+          </label>
+          <div className="p-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-infinity-dark-700 space-y-3">
+            {/* Live preview */}
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center relative overflow-hidden flex-shrink-0">
+                {formData.icon_color ? (
+                  <div className="absolute inset-0" style={{ backgroundColor: formData.icon_color }}></div>
+                ) : (
+                  <>
+                    <div className={`absolute inset-0 bg-gradient-to-br ${getGenreStyle(formData.genres[0] || '').gradient}`}></div>
+                    <div className={`absolute inset-0 ${getGenreStyle(formData.genres[0] || '').pattern}`}></div>
+                  </>
+                )}
+                <Music className="text-white relative z-10" size={24} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {formData.icon_color ? `Prilagođena boja` : 'Automatska (prema žanru)'}
+                </p>
+                {formData.icon_color && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{formData.icon_color}</p>
+                )}
+              </div>
+            </div>
+            {/* Preset swatches */}
+            <div className="flex flex-wrap gap-2">
+              {PRESET_COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, icon_color: color.value })}
+                  title={color.label}
+                  className={`w-8 h-8 rounded-lg border-2 transition-all ${
+                    formData.icon_color === color.value
+                      ? 'border-gray-900 dark:border-white scale-110 shadow-md'
+                      : 'border-transparent hover:scale-105'
+                  }`}
+                  style={{ backgroundColor: color.value }}
+                />
+              ))}
+              {/* Custom color picker */}
+              <label
+                className="w-8 h-8 rounded-lg border-2 border-dashed border-gray-400 dark:border-gray-500 flex items-center justify-center cursor-pointer hover:border-gray-600 dark:hover:border-gray-300 transition-colors bg-white dark:bg-infinity-dark-600"
+                title="Prilagođena boja"
+              >
+                <span className="text-gray-500 dark:text-gray-400 text-lg leading-none">+</span>
+                <input
+                  type="color"
+                  value={formData.icon_color || '#10b981'}
+                  onChange={(e) => setFormData({ ...formData, icon_color: e.target.value })}
+                  className="sr-only"
+                />
+              </label>
+            </div>
+            {/* Reset */}
+            {formData.icon_color && (
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, icon_color: '' })}
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 underline transition-colors"
+              >
+                Resetuj na automatsku boju prema žanru
+              </button>
+            )}
+          </div>
         </div>
 
         <div>

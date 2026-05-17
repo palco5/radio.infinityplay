@@ -1,19 +1,90 @@
 <!doctype html>
-<html lang="sr">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="InfinityPlay Radio - Tvoj zvuk. Tvoj radio. Moderna online radio platforma sa HD kvalitetom i neograničenim mogućnostima." />
-    <meta name="keywords" content="InfinityPlay radio, slušaj muziku online, internet radio Srbija, kreiraj svoj radio, brendirani radio, online radio streaming" />
-    <meta property="og:title" content="InfinityPlay Radio - Tvoj zvuk. Tvoj radio." />
-    <meta property="og:description" content="Moderna online radio platforma sa HD kvalitetom zvuka. Slušaj, kreiraj i personalizuj svoj radio doživljaj." />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://radio.infinityplay.rs" />
-    <title>InfinityPlay Radio - Tvoj zvuk. Tvoj radio.</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<html lang="sr" translate="no">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="google" content="notranslate" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="icon" type="image/png" href="/logo-tab.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#10b981" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="InfinityPlay" />
+  <link rel="apple-touch-icon" href="/pwa-192x192.png" />
+
+  <!-- Primary Meta Tags -->
+  <title>InfinityPlay | Najbolji Online Radio - Muzika Uživo, HD Zvuk & Bez Reklama</title>
+  <meta name="title" content="InfinityPlay | Najbolji Online Radio - Muzika Uživo, HD Zvuk & Bez Reklama" />
+  <meta name="description"
+    content="InfinityPlay - Vodeća platforma za poslovni radio. Radio stanice prilagođene kafićima, restoranima i teretane, uz mogućnost izrade vašeg personalizovanog brendiranog radija sa džinglovima. Premium zvuk bez reklama za vaš biznis." />
+  <meta name="keywords"
+    content="radio, online radio, internet radio srbija, muzika uživo, besplatne radio stanice, muzika za kafiće, muzika za restorane, radio stanice srbija, muzika za teretane, streaming muzike, domaća muzika, strana muzika, hitovi, infinity play, infinityplay radio" />
+  <meta name="author" content="InfinityPlay" />
+  <meta name="robots" content="index, follow" />
+  <meta name="language" content="Serbian" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://radio.infinityplay.rs/" />
+  <meta property="og:title" content="InfinityPlay | Najbolji Online Radio - Muzika Uživo" />
+  <meta property="og:description"
+    content="InfinityPlay - Kompletan sistem za poslovni radio i brendirane stanice. HD zvuk bez reklama za kafiće, restorane i hotele. Kreirajte svoj zvuk!" />
+  <meta property="og:image" content="https://radio.infinityplay.rs/logo.png" />
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:url" content="https://radio.infinityplay.rs/" />
+  <meta property="twitter:title" content="InfinityPlay | Najbolji Online Radio" />
+  <meta property="twitter:description"
+    content="InfinityPlay - Platforma za poslovni radio i personalizovane brendirane stanice. HD kvalitet zvuka bez reklama." />
+  <meta property="twitter:image" content="https://radio.infinityplay.rs/logo.png" />
+
+  <!-- Structured Data (JSON-LD) for Google -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "RadioStation",
+      "name": "InfinityPlay Radio",
+      "alternateName": "InfinityPlay Online Radio",
+      "url": "https://radio.infinityplay.rs",
+      "logo": "https://radio.infinityplay.rs/logo.png",
+      "image": "https://radio.infinityplay.rs/logo.png",
+      "description": "Vodeća platforma za online radio u regionu. Nudimo HD kvalitet zvuka bez reklama, idealno za biznise i ličnu upotrebu.",
+      "address": {
+        "@type": "PostalAddress",
+        "addressCountry": "RS",
+        "addressLocality": "Beograd"
+      },
+      "genre": ["Pop", "Rock", "Folk", "Electronic", "Jazz", "Chillout", "Domaća muzika", "Strana muzika"],
+      "sameAs": [
+        "https://www.facebook.com/infinityplay",
+        "https://www.instagram.com/infinityplay"
+      ],
+      "potentialAction": {
+        "@type": "ListenAction",
+        "target": [
+          {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://radio.infinityplay.rs",
+            "actionPlatform": [
+              "http://schema.org/DesktopWebPlatform",
+              "http://schema.org/MobileWebPlatform"
+            ]
+          }
+        ]
+      },
+      "broadcastServiceTier": "Premium",
+      "isAccessibleForFree": true
+    }
+    </script>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>

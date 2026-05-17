@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { localAuth } from '../lib/localStorage';
-import { Check, CreditCard, Shield, Clock, Building2, MapPin, AlertCircle } from 'lucide-react';
-import Button from '../components/ui/Button';
+import { Check, CreditCard, Building2, AlertCircle } from 'lucide-react';
 import Card from '../components/ui/Card';
 
 const pricingPlans = [
@@ -12,6 +10,7 @@ const pricingPlans = [
     name: 'BASIC RADIO',
     price: 15,
     currency: '€',
+    priceRsd: 1770,
     interval: 'mesečno',
     trialDays: 7,
     features: [
@@ -26,6 +25,7 @@ const pricingPlans = [
     name: 'BRANDED RADIO',
     price: 35,
     currency: '€',
+    priceRsd: 4130,
     interval: 'mesečno',
     features: [
       'Sve iz Basic paketa',
@@ -39,6 +39,7 @@ const pricingPlans = [
     name: 'HOST RADIO',
     price: 195,
     currency: '€',
+    priceRsd: 23000,
     interval: 'godišnje',
     features: [
       'Sve iz Branded paketa',
@@ -62,12 +63,14 @@ const countryNames = {
 export default function PaymentPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<Country>('other');
-  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
+    // Scroll to top when page loads
+    window.scrollTo({ top: 0, behavior: 'auto' });
+
     if (!user) {
       navigate('/');
       return;
@@ -83,38 +86,6 @@ export default function PaymentPage() {
 
   const plan = pricingPlans.find(p => p.id === selectedPlan) || pricingPlans[0];
 
-  const handlePayment = async () => {
-    if (!plan || !user) return;
-
-    setProcessing(true);
-
-    try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Update user profile based on selected plan
-      const updates: any = {
-        subscription_status: 'active',
-        subscription_tier: plan.id,
-        subscription_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      };
-
-      // Handle Trial for Basic Radio
-      if (plan.id === 'basic-radio') {
-        updates.subscription_status = 'trial';
-        updates.trial_started_at = new Date().toISOString();
-        updates.trial_ends_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      }
-
-      localAuth.updateProfile(user.id, updates);
-
-      navigate('/dashboard');
-    } catch (error) {
-      console.error('Payment error:', error);
-      setProcessing(false);
-    }
-  };
-
   const renderPaymentInstructions = () => {
     switch (selectedCountry) {
       case 'serbia':
@@ -123,175 +94,96 @@ export default function PaymentPage() {
             <div className="flex items-center mb-4">
               <Building2 className="text-blue-600 mr-3" size={32} />
               <div>
-                <h3 className="font-bold text-gray-900 dark:text-white">Bankovski Transfer</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Za korisnike iz Srbije</p>
+                <h3 className="font-bold text-gray-900 dark:text-white">Bankovski Transfer (Srbija)</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Instrukcije za uplatu:</p>
               </div>
             </div>
 
-            <div className="space-y-3 bg-white dark:bg-infinity-dark-800 rounded-xl p-4">
+            <div className="space-y-4 bg-white dark:bg-infinity-dark-800 rounded-xl p-5 border border-blue-100 dark:border-blue-900">
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Primalac:</p>
-                <p className="font-mono font-bold text-gray-900 dark:text-white">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Uplatilac</p>
+                <p className="font-medium text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-1">
+                  {profile?.first_name || 'Vaše ime'}, {profile?.last_name || 'prezime'} ili naziv firme i mesto
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Svrha uplate</p>
+                <p className="font-medium text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-1 break-all">
+                  Infinityplay, {user?.email}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Primalac</p>
+                <p className="font-medium text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-1">
                   Bitrejt d.o.o. Beograd
                 </p>
               </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Banka:</p>
-                <p className="font-mono font-bold text-gray-900 dark:text-white">
-                  NLB Komercijalna banka
-                </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Račun</p>
+                  <p className="font-mono font-bold text-gray-900 dark:text-white text-lg break-all">
+                    205-0000000357135-48
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Model</p>
+                  <p className="font-mono font-bold text-gray-900 dark:text-white">
+                    (ostaviti prazno)
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Broj računa:</p>
-                <p className="font-mono font-bold text-gray-900 dark:text-white">
-                  205-0000000357135-48
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Iznos:</p>
-                <p className="font-mono font-bold text-infinity-green-600 text-xl">
-                  {plan?.price} {plan?.currency}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Svrha uplate:</p>
-                <p className="font-mono font-bold text-gray-900 dark:text-white break-all">
-                  Infinityplay, {user?.email || 'vasa email adresa'}
-                </p>
+
+              <div className="mt-2 text-right">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Iznos za uplatu</p>
+                <div className="flex items-end justify-end">
+                  <p className="font-bold text-gray-400 dark:text-gray-500 text-lg mr-2 line-through">
+                    {plan?.price} {plan?.currency}
+                  </p>
+                  <p className="font-mono font-bold text-infinity-green-600 text-3xl">
+                    {(plan?.price * 117.5).toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RSD
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-              <div className="flex items-start">
-                <AlertCircle className="text-yellow-600 dark:text-yellow-400 mr-2 mt-0.5" size={20} />
-                <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                  Važno: U svrhu uplate obavezno upišite email adresu sa kojom ste se registrovali kako bismo odmah aktivirali vaš nalog.
-                </p>
-              </div>
+            <div className="mt-4 flex items-start p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
+              <AlertCircle className="text-yellow-600 dark:text-yellow-400 mr-3 mt-0.5 flex-shrink-0" size={20} />
+              <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                <strong>Za firme:</strong> Fakturu dobijate na SEF ili putem emaila nakon evidentirane uplate.
+              </p>
             </div>
-
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-4">
-              Nakon izvršene uplate, vaš nalog će biti aktiviran u roku od 24h.
-            </p>
           </div>
         );
 
       case 'montenegro':
       case 'croatia':
       case 'bih':
-        return (
-          <div className="bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-2xl p-6">
-            <div className="flex items-center mb-4">
-              <MapPin className="text-green-600 mr-3" size={32} />
-              <div>
-                <h3 className="font-bold text-gray-900 dark:text-white">PostKeš Usluga</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Za korisnike iz {countryNames[selectedCountry]}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-gray-700 dark:text-gray-300">
-                Plaćanje možete izvršiti preko <strong>PostKeš</strong> servisa u najbližoj pošti.
-              </p>
-
-              <div className="bg-white dark:bg-infinity-dark-800 rounded-xl p-4">
-                <div className="mb-3">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Iznos za uplatu:</p>
-                  <p className="font-mono font-bold text-infinity-green-600 text-2xl">
-                    {plan?.price} {plan?.currency}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Vaš referentni broj:</p>
-                  <p className="font-mono font-bold text-gray-900 dark:text-white text-lg">
-                    {user?.id.substring(0, 10).toUpperCase()}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                <p><strong>Koraci za plaćanje:</strong></p>
-                <ol className="list-decimal list-inside space-y-1 ml-2">
-                  <li>Posetite najbližu poštu</li>
-                  <li>Tražite PostKeš uslugu</li>
-                  <li>Navedite iznos i referentni broj</li>
-                  <li>Sačuvajte potvrdu o uplati</li>
-                </ol>
-              </div>
-
-              <p className="text-xs text-gray-600 dark:text-gray-400 mt-4">
-                Aktivacija naloga sledi u roku od 24-48h nakon uplate.
-              </p>
-            </div>
-          </div>
-        );
-
       case 'other':
       default:
         return (
-          <div className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center">
-                <CreditCard className="text-blue-600 mr-3" size={32} />
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white">PayPal / Kartica</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Sigurno online plaćanje</p>
-                </div>
-              </div>
-              <Shield className="text-blue-600" size={24} />
+          <div className="bg-gray-50 dark:bg-gray-900/20 border-2 border-gray-200 dark:border-gray-800 rounded-2xl p-8 text-center">
+            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CreditCard className="text-gray-400" size={32} />
             </div>
 
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Kliknite na dugme ispod da biste nastavili sa PayPal plaćanjem.
-              Biće preusmereni na PayPal stranicu za sigurnu obradu plaćanja.
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              Uskoro dostupno
+            </h3>
+
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Plaćanje za zemlje van Srbije biće omogućeno uskoro.
+              Trenutno je moguće plaćanje samo za korisnike iz Srbije putem bankovnog transfera.
             </p>
 
-            <div className="space-y-2 mb-4">
-              <div className="flex items-start">
-                <Check className="text-green-600 mr-2 flex-shrink-0 mt-0.5" size={18} />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  256-bit SSL enkripcija
-                </span>
-              </div>
-              <div className="flex items-start">
-                <Check className="text-green-600 mr-2 flex-shrink-0 mt-0.5" size={18} />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  Prihvatamo sve glavne kreditne kartice
-                </span>
-              </div>
-              <div className="flex items-start">
-                <Check className="text-green-600 mr-2 flex-shrink-0 mt-0.5" size={18} />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  Otkaži pretplatu u bilo kom trenutku
-                </span>
+            <div className="bg-white dark:bg-infinity-dark-800 rounded-xl p-4 border border-gray-100 dark:border-gray-700 inline-block text-left">
+              <p className="text-sm font-bold text-gray-900 dark:text-white mb-2">Kontakt za informacije:</p>
+              <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                <p>Email: <a href="mailto:info@infinityplay.rs" className="text-infinity-green-600 hover:underline">info@infinityplay.rs</a></p>
               </div>
             </div>
-
-            <Button
-              variant="primary"
-              size="lg"
-              fullWidth
-              onClick={handlePayment}
-              disabled={processing}
-            >
-              {processing ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Obrada...
-                </>
-              ) : (
-                <>
-                  <CreditCard className="mr-2" size={20} />
-                  Plati sa PayPal
-                </>
-              )}
-            </Button>
-
-            <p className="text-xs text-gray-500 dark:text-gray-500 text-center mt-3">
-              Klikom na "Plati sa PayPal" prihvatate naše Uslove korišćenja
-            </p>
           </div>
         );
     }
@@ -305,15 +197,16 @@ export default function PaymentPage() {
     );
   }
 
+  // Increased top padding to avoid header overlap
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-infinity-dark-900 pt-24 pb-12 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-infinity-dark-900 pt-32 pb-12 px-4 transition-colors duration-200">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-serif font-bold text-gray-900 dark:text-white mb-4">
             Izvršite Plaćanje
           </h1>
           <p className="text-xl text-gray-600 dark:text-gray-400">
-            Izabrali ste <span className="font-bold text-infinity-green-600">{plan.name}</span> paket
+            Odaberite vaš paket i način plaćanja
           </p>
         </div>
 
@@ -322,7 +215,7 @@ export default function PaymentPage() {
           <div className="space-y-6">
             <Card className="p-6">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                Izaberite Paket
+                Paket
               </h3>
               <div className="space-y-3">
                 {pricingPlans.map((p) => (
@@ -338,9 +231,16 @@ export default function PaymentPage() {
                       <span className="font-medium text-gray-900 dark:text-white">
                         {p.name}
                       </span>
-                      <span className="font-bold text-infinity-green-600">
-                        {p.price}{p.currency}
-                      </span>
+                      <div className="text-right">
+                        <span className="block font-bold text-infinity-green-600">
+                          {p.price}{p.currency}
+                        </span>
+                        {selectedCountry === 'serbia' && (
+                          <span className="block text-xs text-gray-500">
+                            {p.priceRsd} RSD
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                       {p.interval}
@@ -395,32 +295,14 @@ export default function PaymentPage() {
 
               {/* Payment Instructions Based on Country */}
               {renderPaymentInstructions()}
-
-              {/* Manual Payment Note for Serbia and Regional */}
-              {(selectedCountry === 'serbia' || selectedCountry === 'montenegro' ||
-                selectedCountry === 'croatia' || selectedCountry === 'bih') && (
-                  <div className="mt-6">
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      fullWidth
-                      onClick={() => {
-                        alert('Instrukcije za plaćanje su prikazane iznad. Nakon uplate, kontaktirajte nas sa potvrdom.');
-                        navigate('/dashboard');
-                      }}
-                    >
-                      Razumem instrukcije
-                    </Button>
-                  </div>
-                )}
             </Card>
 
             <div className="mt-6 text-center">
               <button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/dashboard')}
                 className="text-infinity-green-600 hover:text-infinity-green-700 font-medium"
               >
-                ← Nazad na početnu
+                ← Nazad na dashboard
               </button>
             </div>
           </div>

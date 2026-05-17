@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
+import { profiles } from '../lib/api';
 
 type Theme = 'light' | 'dark';
 
@@ -16,7 +17,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (profile?.theme_preference) {
-      setTheme(profile.theme_preference);
+      const pref = profile.theme_preference;
+      if (pref === 'system') {
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setTheme(systemDark ? 'dark' : 'light');
+      } else {
+        setTheme(pref as Theme);
+      }
     } else {
       const savedTheme = localStorage.getItem('theme') as Theme;
       if (savedTheme) {
@@ -42,8 +49,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('theme', newTheme);
 
     if (user && profile) {
-      const { localAuth } = await import('../lib/localStorage');
-      localAuth.updateProfile(user.id, { theme_preference: newTheme });
+      profiles.update(user.id, { theme_preference: newTheme });
     }
   };
 

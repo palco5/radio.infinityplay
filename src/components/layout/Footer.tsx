@@ -84,8 +84,8 @@ export default function Footer() {
             <ul className="space-y-3">
               <li className="flex items-center space-x-2">
                 <Mail size={16} className="text-infinity-green-400" />
-                <a href="mailto:radio@infinityplay.rs" className="text-gray-400 hover:text-infinity-green-400 transition-colors text-sm">
-                  radio@infinityplay.rs
+                <a href="mailto:info@infinityplay.rs" className="text-gray-400 hover:text-infinity-green-400 transition-colors text-sm">
+                  info@infinityplay.rs
                 </a>
               </li>
               <li className="flex items-center space-x-2">

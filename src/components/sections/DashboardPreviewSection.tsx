@@ -1,177 +1,123 @@
-import { Monitor, Smartphone, Tablet, Play, Music, TrendingUp } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { stations as stationsApi } from '../../lib/api';
+import { RadioStation } from '../../types';
+import StationCard from '../StationCard';
+import { Play } from 'lucide-react';
 
 export default function DashboardPreviewSection() {
+  const [stations, setStations] = useState<RadioStation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadStations = async () => {
+      try {
+        const data = await stationsApi.getAll();
+        const activeStations = data
+          .filter((s: RadioStation) => s.is_active)
+          .sort((a: RadioStation, b: RadioStation) => a.name.localeCompare(b.name))
+          .slice(0, 8); // Show only first 8
+        setStations(activeStations);
+      } catch (err) {
+        console.error('Failed to load stations for preview', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadStations();
+  }, []);
+
+  const handleStationClick = () => {
+    // Dispatch event to open auth modal since they are guests
+    const event = new CustomEvent('OPEN_AUTH_MODAL', {
+      detail: { defaultTab: 'login' }
+    });
+    window.dispatchEvent(event);
+  };
+
   return (
-    <section className="py-20 bg-gradient-to-b from-white to-infinity-green-50 dark:from-infinity-dark-900 dark:to-infinity-dark-800">
-      <div className="container mx-auto px-4">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-serif font-bold text-gray-900 dark:text-white mb-4">
-            Vaš Dashboard Na Svakom Uređaju
+    <section className="py-24 bg-[#0f1014] text-white overflow-hidden relative">
+      {/* Background subtle glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-full pointer-events-none">
+        <div className="absolute top-[20%] left-[10%] w-[400px] h-[400px] bg-infinity-green-900/10 rounded-full blur-[100px]" />
+        <div className="absolute bottom-[20%] right-[10%] w-[500px] h-[500px] bg-purple-900/10 rounded-full blur-[100px]" />
+      </div>
+
+      <div className="container mx-auto px-4 relative z-10">
+        <div className="text-center mb-16 max-w-3xl mx-auto">
+          <h2 className="text-4xl md:text-5xl font-bold mb-6">
+            Sve vaše omiljene stanice na jednom mestu.
           </h2>
-          <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-            Pristupite vašim omiljenim stanicama bilo gde, bilo kada - na računaru, tabletu ili telefonu
+          <p className="text-xl text-gray-400">
+            Organizujte svoj svet muzike. Dodajte, slušajte i uživajte u beskonačnom izboru.
           </p>
         </div>
 
-        <div className="max-w-7xl mx-auto">
-          <div className="relative">
-            <div className="relative z-10 mb-12">
-              <div className="bg-white dark:bg-infinity-dark-800 rounded-3xl shadow-2xl overflow-hidden border-8 border-gray-900 dark:border-gray-700">
-                <div className="bg-gray-200 dark:bg-gray-700 px-4 py-3 flex items-center space-x-2">
-                  <div className="flex space-x-2">
-                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  </div>
-                  <div className="flex-1 bg-white dark:bg-gray-600 rounded px-3 py-1 text-xs text-gray-600 dark:text-gray-300">
-                    InfinityPlay Dashboard
+        {/* The Dashboard Mockup Container */}
+        <div className="relative mx-auto max-w-6xl">
+          {/* Browser frame look */}
+          <div className="bg-[#1a1b20] rounded-xl border border-gray-800 shadow-2xl overflow-hidden animate-fade-in-up">
+            {/* Header */}
+            <div className="bg-[#131418] px-4 py-3 border-b border-gray-800 flex items-center gap-4">
+              <div className="flex gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
+                <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
+              </div>
+              <div className="flex-1 bg-[#1a1b20] h-8 rounded-lg border border-gray-700/50 flex items-center px-4 text-xs text-gray-500 font-mono">
+                infinityplay.com/dashboard
+              </div>
+            </div>
+
+            {/* Dashboard Content */}
+            <div className="p-6 md:p-8 bg-gradient-to-br from-[#1a1b20] to-[#131418] min-h-[600px]">
+
+              {/* Fake Nav */}
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-2xl font-bold text-white">Radio Stanice</h3>
+                <div className="flex gap-3">
+                  <div className="h-10 w-64 bg-gray-800 rounded-lg hidden md:block"></div>
+                  <div className="h-10 w-10 bg-infinity-green-600 rounded-lg flex items-center justify-center">
+                    <Play size={20} className="fill-current text-white" />
                   </div>
                 </div>
+              </div>
 
-                <div className="bg-gradient-to-br from-infinity-green-50 to-blue-50 dark:from-infinity-dark-900 dark:to-infinity-dark-800 p-8">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-                        Dobrodošli nazad!
-                      </h3>
-                      <p className="text-gray-600 dark:text-gray-400">
-                        Vaše omiljene radio stanice
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2 px-4 py-2 bg-gradient-infinity rounded-full">
-                      <span className="text-white font-bold text-sm">PREMIUM</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-gradient-to-br from-infinity-green-400 to-infinity-green-600 rounded-xl p-4 text-white">
-                      <Music size={24} className="mb-2" />
-                      <p className="text-2xl font-bold">50+</p>
-                      <p className="text-sm opacity-90">Stanica</p>
-                    </div>
-                    <div className="bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl p-4 text-white">
-                      <Play size={24} className="mb-2" />
-                      <p className="text-2xl font-bold">1,234</p>
-                      <p className="text-sm opacity-90">Minuta</p>
-                    </div>
-                    <div className="bg-gradient-to-br from-purple-400 to-purple-600 rounded-xl p-4 text-white">
-                      <TrendingUp size={24} className="mb-2" />
-                      <p className="text-2xl font-bold">Aktivno</p>
-                      <p className="text-sm opacity-90">Slušanje</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-3">
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                      <div
-                        key={i}
-                        className="bg-white dark:bg-infinity-dark-700 rounded-xl p-3 border-2 border-gray-200 dark:border-gray-600 hover:border-infinity-green-500 transition-all cursor-pointer"
-                      >
-                        <div className="w-10 h-10 bg-gradient-infinity rounded-lg mb-2"></div>
-                        <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded mb-1"></div>
-                        <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded w-2/3"></div>
+              {/* Grid of Stations */}
+              {loading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                    <div key={i} className="h-48 bg-gray-800 rounded-2xl"></div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {stations.map(station => (
+                    <StationCard
+                      key={station.id}
+                      station={station}
+                      isCurrentlyPlaying={false}
+                      onClick={handleStationClick}
+                      className="bg-[#25262b] border-[#2c2e33] hover:border-infinity-green-500/50 hover:bg-[#2c2e33] transform hover:-translate-y-1 transition-all duration-300"
+                    />
+                  ))}
+                  {/* Call to action card if less than 8 or just always at end? */}
+                  {stations.length < 8 && (
+                    <div onClick={handleStationClick} className="h-full min-h-[180px] rounded-2xl border-2 border-dashed border-gray-800 hover:border-infinity-green-500/50 flex flex-col items-center justify-center cursor-pointer text-gray-500 hover:text-white transition-colors group">
+                      <div className="w-12 h-12 rounded-full bg-gray-800 group-hover:bg-infinity-green-900/20 flex items-center justify-center mb-3 transition-colors">
+                        <span className="text-2xl">+</span>
                       </div>
-                    ))}
-                  </div>
+                      <span className="font-medium">Dodaj Stanicu</span>
+                    </div>
+                  )}
                 </div>
-              </div>
-
-              <div className="absolute -bottom-6 -right-6 z-20 transform rotate-3 hidden md:block">
-                <div className="bg-white dark:bg-infinity-dark-800 rounded-2xl shadow-2xl overflow-hidden border-4 border-gray-900 dark:border-gray-700 w-48">
-                  <div className="bg-gray-900 px-3 py-2">
-                    <div className="w-16 h-1 bg-gray-600 rounded-full mx-auto mb-1"></div>
-                  </div>
-                  <div className="bg-gradient-to-br from-infinity-green-50 to-blue-50 dark:from-infinity-dark-900 dark:to-infinity-dark-800 p-4">
-                    <div className="space-y-2 mb-3">
-                      <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded"></div>
-                      <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded w-3/4"></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[1, 2, 3, 4].map((i) => (
-                        <div
-                          key={i}
-                          className="bg-white dark:bg-infinity-dark-700 rounded-lg p-2 border border-gray-200 dark:border-gray-600"
-                        >
-                          <div className="w-6 h-6 bg-gradient-infinity rounded mb-1"></div>
-                          <div className="h-1.5 bg-gray-200 dark:bg-gray-600 rounded"></div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="bg-gray-900 h-8"></div>
-                </div>
-              </div>
-
-              <div className="absolute -bottom-6 -left-6 z-20 transform -rotate-3 hidden lg:block">
-                <div className="bg-white dark:bg-infinity-dark-800 rounded-2xl shadow-2xl overflow-hidden border-6 border-gray-900 dark:border-gray-700 w-64">
-                  <div className="bg-gray-200 dark:bg-gray-700 px-3 py-2 flex items-center space-x-2">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    </div>
-                  </div>
-                  <div className="bg-gradient-to-br from-infinity-green-50 to-blue-50 dark:from-infinity-dark-900 dark:to-infinity-dark-800 p-4">
-                    <div className="space-y-2 mb-3">
-                      <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded"></div>
-                      <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded w-2/3"></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[1, 2, 3, 4].map((i) => (
-                        <div
-                          key={i}
-                          className="bg-white dark:bg-infinity-dark-700 rounded-lg p-2 border border-gray-200 dark:border-gray-600"
-                        >
-                          <div className="w-8 h-8 bg-gradient-infinity rounded mb-1"></div>
-                          <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded"></div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 mt-20">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Monitor className="text-white" size={32} />
-              </div>
-              <h3 className="text-xl font-serif font-bold text-gray-900 dark:text-white mb-2">
-                Desktop
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Potpuno optimizovan dashboard sa svim funkcijama za kompjutere i laptopove
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Tablet className="text-white" size={32} />
-              </div>
-              <h3 className="text-xl font-serif font-bold text-gray-900 dark:text-white mb-2">
-                Tablet
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Prilagođen interfejs za tablet uređaje sa touch kontrolama
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-infinity-green-500 to-infinity-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Smartphone className="text-white" size={32} />
-              </div>
-              <h3 className="text-xl font-serif font-bold text-gray-900 dark:text-white mb-2">
-                Mobile
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Responsive dizajn omogućava savršeno iskustvo na mobilnim telefonima
-              </p>
-            </div>
-          </div>
+          {/* Floating "Live" badges or tooltips could be added here for more depth */}
         </div>
       </div>
     </section>
   );
 }
+

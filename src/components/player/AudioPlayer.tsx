@@ -2,16 +2,15 @@ import { Volume2, VolumeX, Play, Pause, Radio, Minimize2 } from 'lucide-react';
 import { useAudio } from '../../contexts/AudioContext';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { localAuth } from '../../lib/localStorage';
 import Button from '../ui/Button';
 import NowPlayingIndicator from './NowPlayingIndicator';
 
 export default function AudioPlayer() {
   const { currentStation, isPlaying, volume, pause, playStation, setVolume, playJingle } = useAudio();
   const [isMinimized, setIsMinimized] = useState(false);
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const lastJingleTimeRef = useRef<number>(Date.now());
-  const jingleIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const jingleIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Jingle Logic
   useEffect(() => {
@@ -23,7 +22,7 @@ export default function AudioPlayer() {
       return;
     }
 
-    const profile = localAuth.getProfile(user.id);
+    // const profile = localAuth.getProfile(user.id);
     if (!profile?.jingle_url) return;
 
     const intervalMinutes = profile.jingle_interval_minutes || 7;

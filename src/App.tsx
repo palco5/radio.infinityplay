@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -5,8 +6,10 @@ import { AudioProvider } from './contexts/AudioContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import AudioPlayer from './components/player/AudioPlayer';
+import PageLoadAnimation from './components/ui/PageLoadAnimation';
 import LandingPage from './pages/LandingPage';
 import PaymentPage from './pages/PaymentPage';
+import SubscriptionOptionsPage from './pages/SubscriptionOptionsPage';
 import UserDashboard from './pages/UserDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -15,43 +18,61 @@ import ProtectedRoute from './components/routing/ProtectedRoute';
 function AppContent() {
   const location = useLocation();
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/admin';
+  const [showAnimation, setShowAnimation] = useState(true);
+  const [animationComplete, setAnimationComplete] = useState(false);
+
+  const handleAnimationComplete = () => {
+    setAnimationComplete(true);
+    setShowAnimation(false);
+  };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors duration-300 smooth-scroll">
-      {!isDashboard && <Navbar />}
-      <main>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route
-            path="/payment"
-            element={
-              <ProtectedRoute>
-                <PaymentPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <UserDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute requireAdmin adminEmail="darkospira@gmail.com">
-                <AdminDashboard />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </main>
-      {!isDashboard && <Footer />}
-      <AudioPlayer />
-    </div>
+    <>
+      {showAnimation && <PageLoadAnimation onComplete={handleAnimationComplete} />}
+      <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors duration-300 smooth-scroll">
+        {!isDashboard && <Navbar />}
+        <main>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route
+              path="/payment"
+              element={
+                <ProtectedRoute>
+                  <PaymentPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/subscription-options"
+              element={
+                <ProtectedRoute>
+                  <SubscriptionOptionsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <UserDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute requireAdmin adminEmail="darkospira@gmail.com">
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </main>
+        {!isDashboard && <Footer />}
+        <AudioPlayer />
+      </div>
+    </>
   );
 }
 

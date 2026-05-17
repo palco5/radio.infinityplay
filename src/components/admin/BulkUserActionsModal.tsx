@@ -2,7 +2,7 @@ import { useState } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { UserProfile } from '../../types';
-import { localAuth } from '../../lib/localStorage';
+import { profiles as profilesApi } from '../../lib/api';
 import { Users, Check, AlertCircle, CheckSquare, Square } from 'lucide-react';
 
 interface BulkUserActionsModalProps {
@@ -50,25 +50,27 @@ export default function BulkUserActionsModal({ isOpen, onClose, users, onSuccess
         setSuccess('');
 
         try {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 500));
 
-            selectedUsers.forEach(userId => {
+            const updates = Array.from(selectedUsers).map(async (userId) => {
                 switch (action) {
                     case 'activate':
-                        localAuth.updateProfile(userId, { subscription_status: 'active' });
+                        await profilesApi.update(userId, { subscription_status: 'active' });
                         break;
                     case 'deactivate':
-                        localAuth.updateProfile(userId, { subscription_status: 'inactive' });
+                        await profilesApi.update(userId, { subscription_status: 'inactive' });
                         break;
                     case 'delete':
                         // In production, this would be a soft delete
-                        localAuth.updateProfile(userId, {
+                        await profilesApi.update(userId, {
                             subscription_status: 'inactive',
                             subscription_tier: 'free'
                         });
                         break;
                 }
             });
+
+            await Promise.all(updates);
 
             const actionText = action === 'activate' ? 'aktivirano' :
                 action === 'deactivate' ? 'deaktivirano' : 'obrisano';
@@ -189,8 +191,8 @@ export default function BulkUserActionsModal({ isOpen, onClose, users, onSuccess
                                     </div>
                                     <div className="flex items-center space-x-2">
                                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${user.subscription_status === 'active'
-                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                            : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
                                             }`}>
                                             {user.subscription_status}
                                         </span>

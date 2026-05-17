@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { localAuth } from '../../lib/localStorage';
+import { profiles as profilesApi } from '../../lib/api';
 import TrialConfetti from './TrialConfetti';
 import TrialTimer from './TrialTimer';
 import { Crown, Check } from 'lucide-react';
@@ -29,54 +29,49 @@ const defaultTrialConfig: TrialUIConfig = {
 };
 
 const TrialUIWrapper: React.FC<TrialUIWrapperProps> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [showConfetti, setShowConfetti] = useState(false);
   const [trialConfig, setTrialConfig] = useState<TrialUIConfig>(defaultTrialConfig);
   const [isTrialActive, setIsTrialActive] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      const profile = localAuth.getProfile(user.id);
+    if (user && profile) {
+      // Admin users should never see trial UI
+      if (profile.is_admin) {
+        setIsTrialActive(false);
+        return;
+      }
 
-      if (profile) {
-        // Admin users should never see trial UI
-        if (profile.is_admin) {
-          setIsTrialActive(false);
-          return;
-        }
+      // Check if user is in trial period
+      const isTrial = profile.subscription_status === 'trial' &&
+        profile.trial_ends_at &&
+        new Date(profile.trial_ends_at) > new Date();
 
-        // Check if user is in trial period
-        const isTrial = profile.subscription_status === 'trial' &&
-          profile.trial_ends_at &&
-          new Date(profile.trial_ends_at) > new Date();
+      setIsTrialActive(!!isTrial);
 
-        setIsTrialActive(!!isTrial);
+      if (isTrial) {
+        // Load custom trial UI config or use default
+        const config = profile.trial_ui_config || defaultTrialConfig;
+        setTrialConfig(config);
 
-        if (isTrial) {
-          // Load custom trial UI config or use default
-          const config = profile.trial_ui_config || defaultTrialConfig;
-          setTrialConfig(config);
-
-          // Show confetti if enabled and not shown before
-          if (config.show_confetti && !profile.confetti_shown) {
-            setShowConfetti(true);
-            // Mark confetti as shown
-            localAuth.updateProfile(user.id, { confetti_shown: true });
-          }
+        // Show confetti if enabled and not shown before
+        if (config.show_confetti && !profile.confetti_shown) {
+          setShowConfetti(true);
+          // Mark confetti as shown
+          profilesApi.update(user.id, { confetti_shown: true });
         }
       }
     }
-  }, [user]);
+  }, [user, profile]);
 
-  const handleTrialExpired = () => {
-    if (user) {
-      const profile = localAuth.getProfile(user.id);
-      if (profile && !profile.cancel_at_period_end) {
+  const handleTrialExpired = async () => {
+    if (user && profile) {
+      if (!profile.cancel_at_period_end) {
         // Auto-charge and convert to paid subscription
         const subscriptionEndsAt = new Date();
         subscriptionEndsAt.setDate(subscriptionEndsAt.getDate() + 30);
 
-        localAuth.updateProfile(user.id, {
+        await profilesApi.update(user.id, {
           subscription_status: 'active',
           subscription_ends_at: subscriptionEndsAt.toISOString(),
           trial_ends_at: null,
@@ -85,7 +80,7 @@ const TrialUIWrapper: React.FC<TrialUIWrapperProps> = ({ children }) => {
         alert('Vaš probni period je istekao. Pretplata je automatski aktivirana na 30 dana.');
       } else {
         // Trial expired and user cancelled
-        localAuth.updateProfile(user.id, {
+        await profilesApi.update(user.id, {
           subscription_status: 'inactive',
           subscription_tier: 'free',
           trial_ends_at: null,
@@ -141,9 +136,10 @@ const TrialUIWrapper: React.FC<TrialUIWrapperProps> = ({ children }) => {
           ))}
         </div>
 
-        {trialConfig.show_timer && user && (
+
+        {trialConfig.show_timer && user && profile && (
           <TrialTimer
-            trialEndsAt={localAuth.getProfile(user.id)?.trial_ends_at || ''}
+            trialEndsAt={profile.trial_ends_at || ''}
             onExpired={handleTrialExpired}
           />
         )}

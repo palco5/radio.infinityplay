@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, User, Mail, Lock, Building2, MapPin } from 'lucide-react';
 import Button from '../ui/Button';
+import { auth as authApi, profiles as profilesApi } from '../../lib/api';
 
 interface CreateUserModalProps {
     isOpen: boolean;
@@ -22,9 +23,9 @@ const businessCategories = [
 
 const subscriptionTiers = [
     { value: 'free', label: 'Besplatno' },
-    { value: 'web-radio', label: 'Web Radio (15€)' },
-    { value: 'box-radio', label: 'Box Radio (50€)' },
-    { value: 'moj-radio', label: 'Moj Radio (240€)' },
+    { value: 'basic-radio', label: 'Basic Radio (15€)' },
+    { value: 'branded-radio', label: 'Branded Radio (35€)' },
+    { value: 'host-radio', label: 'Host Radio (195€)' },
 ];
 
 const subscriptionStatuses = [
@@ -69,28 +70,21 @@ export default function CreateUserModal({ isOpen, onClose, onUserCreated }: Crea
                 throw new Error('Lozinka mora imati najmanje 6 karaktera');
             }
 
-            // Provera da li email već postoji
-            const existingProfiles = localStorage.getItem('infinity_profiles');
-            const profiles = existingProfiles ? JSON.parse(existingProfiles) : [];
+            // Kreiraj korisnika preko API
+            const { user } = await authApi.register(
+                formData.email,
+                formData.password,
+                formData.firstName || formData.email.split('@')[0],
+                formData.lastName || ''
+            );
 
-            if (profiles.some((p: any) => p.email === formData.email)) {
-                throw new Error('Korisnik sa ovim emailom već postoji');
-            }
-
-            // Kreiranje novog korisnika
-            const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-            const newUser = {
-                id: userId,
-                email: formData.email,
+            // Ažuriraj profil sa dodatnim podacima
+            await profilesApi.update(user.id, {
                 display_name: formData.displayName || formData.email.split('@')[0],
-                first_name: formData.firstName || null,
-                last_name: formData.lastName || null,
-                avatar_url: '👤',
                 business_category: formData.businessCategory,
                 custom_location: formData.customLocation || null,
-                subscription_status: formData.subscriptionStatus,
-                subscription_tier: formData.subscriptionTier,
+                subscription_status: formData.subscriptionStatus as 'active' | 'inactive' | 'trial' | 'cancelled',
+                subscription_tier: formData.subscriptionTier as 'free' | 'ad-free' | 'branded-radio',
                 subscription_ends_at: formData.subscriptionStatus === 'active'
                     ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
                     : null,
@@ -102,24 +96,8 @@ export default function CreateUserModal({ isOpen, onClose, onUserCreated }: Crea
                     : null,
                 is_admin: formData.isAdmin,
                 email_notifications: formData.emailNotifications,
-                newsletter_subscription: formData.newsletterSubscription,
-                recommended_stations: [],
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-            };
-
-            // Dodaj korisnika u localStorage
-            profiles.push(newUser);
-            localStorage.setItem('infinity_profiles', JSON.stringify(profiles));
-
-            // Dodaj credentials
-            const credentials = localStorage.getItem('infinity_credentials');
-            const creds = credentials ? JSON.parse(credentials) : {};
-            creds[formData.email] = {
-                password: formData.password,
-                userId: userId
-            };
-            localStorage.setItem('infinity_credentials', JSON.stringify(creds));
+                newsletter_subscribed: formData.newsletterSubscription,
+            });
 
             // Resetuj formu
             setFormData({

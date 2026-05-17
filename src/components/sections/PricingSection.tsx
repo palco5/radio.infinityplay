@@ -79,7 +79,7 @@ export default function PricingSection() {
 
   const handlePlanSelect = (plan: typeof pricingPlans[0]) => {
     setSelectedPlan(plan);
-    if (plan.id === 'host-radio') {
+    if (plan.id === 'host-radio' || plan.id === 'branded-radio') {
       setShowContactModal(true);
       return;
     }
@@ -91,26 +91,19 @@ export default function PricingSection() {
   };
 
   return (
-    <section id="pricing" className="py-20 bg-infinity-green-50 dark:bg-infinity-dark-800">
+    <section id="pricing" className="py-12 md:py-20 bg-gray-50 dark:bg-[#0F172A] transition-colors duration-300">
       <div className="container mx-auto px-4">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-serif font-bold text-gray-900 dark:text-white mb-4">
+        <div className="text-center mb-8 md:mb-16">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-gray-900 dark:text-white mb-3 md:mb-4">
             Pretplate i Benefiti
           </h2>
-          <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-6">
+          <p className="text-base md:text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-4 md:mb-6">
             Odaberite plan koji najbolje odgovara vašim potrebama
           </p>
-          <div className="max-w-4xl mx-auto bg-gradient-to-r from-infinity-green-50 to-blue-50 dark:from-infinity-dark-800 dark:to-infinity-dark-700 p-8 rounded-3xl border-2 border-infinity-green-200 dark:border-infinity-green-800">
-            <h3 className="text-2xl font-serif font-bold text-gray-900 dark:text-white mb-3">
-              Najbolje rešenje za puštanje muzike u poslovnim objektima
-            </h3>
-            <p className="text-lg text-gray-700 dark:text-gray-300">
-              Naši planovi su idealni za <strong>kafiće, restorane, teretane, spa centre, prodavnice, kancelarije</strong> i sve druge poslovne prostore gde želite da kreirate savršenu atmosferu kvalitetnom muzikom.
-            </p>
-          </div>
+
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-7xl mx-auto">
           {pricingPlans.map((plan) => {
             const Icon = plan.icon;
 
@@ -118,55 +111,55 @@ export default function PricingSection() {
               <Card
                 key={plan.id}
                 hover
-                className={`relative ${plan.popular ? 'ring-4 ring-infinity-green-500 scale-105' : ''}`}
+                className={`relative ${plan.popular ? 'ring-2 ring-infinity-green-500 md:scale-105 overflow-visible z-10' : ''}`}
               >
                 {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-infinity px-4 py-1 rounded-full shadow-lg">
-                    <span className="text-white text-sm font-bold">NAJPOPULARNIJI</span>
+                  <div className="absolute -top-4 md:-top-5 left-1/2 transform -translate-x-1/2 bg-gradient-infinity px-4 md:px-6 py-1.5 md:py-2 rounded-full shadow-lg z-20 whitespace-nowrap">
+                    <span className="text-white text-xs md:text-sm font-bold tracking-wide uppercase">NAJPOPULARNIJI</span>
                   </div>
                 )}
 
-                <div className={`w-16 h-16 bg-gradient-to-br ${plan.color} rounded-2xl flex items-center justify-center mb-4 shadow-lg`}>
-                  <Icon className="text-white" size={32} />
+                <div className={`w-12 h-12 md:w-16 md:h-16 bg-gradient-to-br ${plan.color} rounded-2xl flex items-center justify-center mb-3 md:mb-4 shadow-lg`}>
+                  <Icon className="text-white" size={24} />
                 </div>
 
-                <h3 className="text-2xl font-serif font-bold text-gray-900 dark:text-white mb-6">
+                <h3 className="text-xl md:text-2xl font-serif font-bold text-gray-900 dark:text-white mb-4 md:mb-6">
                   {plan.name}
                 </h3>
 
-                <div className="mb-6">
+                <div className="mb-4 md:mb-6">
                   <div className="flex items-baseline justify-center">
-                    <span className="text-5xl font-bold text-gray-900 dark:text-white">
+                    <span className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white">
                       {plan.price}
                     </span>
-                    <span className="text-2xl font-bold text-infinity-green-600 ml-1">
+                    <span className="text-xl md:text-2xl font-bold text-infinity-green-600 ml-1">
                       {plan.currency}
                     </span>
                   </div>
-                  <p className="text-center text-gray-600 dark:text-gray-400 mt-1">
+                  <p className="text-center text-sm md:text-base text-gray-600 dark:text-gray-400 mt-1">
                     {plan.interval}
                   </p>
                 </div>
 
                 {plan.trial && (
-                  <div className="mb-6 bg-infinity-green-100 dark:bg-infinity-green-900/20 border-2 border-infinity-green-500 rounded-2xl p-4">
+                  <div className="mb-4 md:mb-6 bg-infinity-green-100 dark:bg-infinity-green-900/20 border-2 border-infinity-green-500 rounded-2xl p-3 md:p-4">
                     <div className="flex items-center justify-center space-x-2">
-                      <Sparkles className="text-infinity-green-600" size={20} />
-                      <span className="text-infinity-green-700 dark:text-infinity-green-400 font-bold">
+                      <Sparkles className="text-infinity-green-600" size={18} />
+                      <span className="text-sm md:text-base text-infinity-green-700 dark:text-infinity-green-400 font-bold">
                         {plan.trial.highlight}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 text-center mt-2">
+                    <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 text-center mt-2">
                       Ako ne otkažete tokom 7 dana, automatski se naplaćuje pretplata
                     </p>
                   </div>
                 )}
 
-                <ul className="space-y-3 mb-8">
+                <ul className="space-y-2 md:space-y-3 mb-6 md:mb-8">
                   {plan.features.map((feature, index) => (
                     <li key={index} className="flex items-start">
-                      <Check className="text-infinity-green-600 mr-2 flex-shrink-0 mt-0.5" size={20} />
-                      <span className="text-gray-700 dark:text-gray-300">{feature}</span>
+                      <Check className="text-infinity-green-600 mr-2 flex-shrink-0 mt-0.5" size={18} />
+                      <span className="text-sm md:text-base text-gray-700 dark:text-gray-300">{feature}</span>
                     </li>
                   ))}
                 </ul>
@@ -177,46 +170,40 @@ export default function PricingSection() {
                   fullWidth
                   onClick={() => handlePlanSelect(plan)}
                 >
-                  {plan.id === 'host-radio' ? 'Kontaktiraj nas' : 'Započni Sada'}
+                  {plan.id === 'host-radio' || plan.id === 'branded-radio' ? 'Kontaktiraj nas' : 'Započni Sada'}
                 </Button>
               </Card>
             );
           })}
         </div>
 
-        <div className="mt-12 text-center">
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Svi planovi uključuju PayPal sigurna plaćanja
-          </p>
-          <p className="text-sm text-gray-500 dark:text-gray-500">
-            Možete otkazati pretplatu u bilo kom trenutku iz vašeg naloga
-          </p>
-        </div>
+
       </div>
 
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         selectedPlan={selectedPlan}
+        defaultTab="register"
       />
 
       <Modal
         isOpen={showContactModal}
         onClose={() => setShowContactModal(false)}
-        title="Kontaktirajte nas za HOST RADIO"
+        title="Kontaktirajte nas"
       >
         <div className="space-y-4">
-          <p className="text-gray-700 dark:text-gray-300">
-            HOST RADIO je profesionalno rešenje koje zahteva dodatnu konfiguraciju i podešavanje prema vašim specifičnim potrebama.
+          <p className="text-sm md:text-base text-gray-700 dark:text-gray-300">
+            {selectedPlan?.name} je profesionalno rešenje koje zahteva dodatnu konfiguraciju i podešavanje prema vašim specifičnim potrebama.
           </p>
-          <p className="text-gray-700 dark:text-gray-300">
+          <p className="text-sm md:text-base text-gray-700 dark:text-gray-300">
             Molimo vas da nas kontaktirate direktno kako bismo zajedno kreirali idealno rešenje za vas:
           </p>
-          <div className="bg-infinity-green-50 dark:bg-infinity-green-900/20 p-6 rounded-2xl border-2 border-infinity-green-500">
-            <p className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+          <div className="bg-infinity-green-50 dark:bg-infinity-green-900/20 p-4 md:p-6 rounded-2xl border-2 border-infinity-green-500">
+            <p className="text-base md:text-lg font-bold text-gray-900 dark:text-white mb-2">
               Email: info@infinityplay.rs
             </p>
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-sm md:text-base text-gray-600 dark:text-gray-400">
               Odgovaramo u roku od 24 sata
             </p>
           </div>
@@ -224,7 +211,7 @@ export default function PricingSection() {
             variant="primary"
             size="lg"
             fullWidth
-            onClick={() => window.location.href = 'mailto:info@infinityplay.rs?subject=HOST RADIO upit'}
+            onClick={() => window.location.href = `mailto:info@infinityplay.rs?subject=Upit za ${selectedPlan?.name}`}
           >
             Pošalji Email
           </Button>

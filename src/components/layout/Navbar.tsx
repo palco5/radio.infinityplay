@@ -52,7 +52,7 @@ export default function Navbar() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 dark:bg-infinity-dark-900/90 backdrop-blur-md shadow-lg transition-all duration-300">
-      <div className="container mx-auto px-4">
+      <div className="container mx-auto px-4 max-w-7xl">
         <div className="flex items-center justify-between h-20">
           <button
             onClick={() => navigate('/')}
@@ -124,7 +124,7 @@ export default function Navbar() {
                 </Button>
               </div>
             ) : (
-              <Button variant="primary" size="sm" onClick={() => scrollToSection('pricing')}>
+              <Button variant="primary" size="sm" onClick={() => scrollToSection('subscription-options')}>
                 Započni Besplatno
               </Button>
             )}
@@ -169,12 +169,23 @@ export default function Navbar() {
               Kontakt
             </button>
 
-            <div className="flex items-center space-x-2 px-4">
+            <div className="flex items-center space-x-2 px-4 py-2">
               <button
                 onClick={toggleTheme}
-                className="p-2 rounded-full hover:bg-infinity-green-50 dark:hover:bg-infinity-dark-800 flex-1"
+                className="flex items-center gap-2 p-2 rounded-lg hover:bg-infinity-green-50 dark:hover:bg-infinity-dark-800 w-full text-left transition-colors"
+                style={{ color: theme === 'dark' ? '#FFF' : '#333' }}
               >
-                {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                {theme === 'dark' ? (
+                  <>
+                    <Sun className="text-infinity-green-500" size={20} />
+                    <span className="font-medium text-white">Light Mode</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="text-gray-700" size={20} />
+                    <span className="font-medium text-gray-900">Dark Mode</span>
+                  </>
+                )}
               </button>
             </div>
             {user ? (
@@ -200,7 +211,7 @@ export default function Navbar() {
               </div>
             ) : (
               <div className="px-4">
-                <Button variant="primary" size="sm" fullWidth onClick={() => scrollToSection('pricing')}>
+                <Button variant="primary" size="sm" fullWidth onClick={() => scrollToSection('subscription-options')}>
                   Započni Besplatno
                 </Button>
               </div>

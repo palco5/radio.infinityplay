@@ -3,15 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAudio } from '../contexts/AudioContext';
-import { localAuth, localStations } from '../lib/localStorage';
+import { stations as stationsApi, profiles as profilesApi, jingles as jinglesApi } from '../lib/api';
 import { useEventBus, EVENTS } from '../lib/eventBus';
 import { RadioStation } from '../types';
-import { getGenreStyle } from '../lib/genreBackgrounds';
+
 import confetti from 'canvas-confetti';
 import {
-  Play,
-  Pause,
   Search,
+  Play,
   Filter,
   User,
   CreditCard,
@@ -29,12 +28,16 @@ import OnboardingModal from '../components/onboarding/OnboardingModal';
 import SubscriptionManagement from '../components/dashboard/SubscriptionManagement';
 import SettingsModal from '../components/dashboard/SettingsModal';
 import TrialStatus from '../components/dashboard/TrialStatus';
+import StationCard from '../components/StationCard';
+import MojRadioCard from '../components/MojRadioCard';
+import DashboardSelectionModal from '../components/dashboard/DashboardSelectionModal';
+import { Shield } from 'lucide-react';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, loading: authLoading, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { currentStation, isPlaying, playStation, pause } = useAudio();
+  const { currentStation, isPlaying, playStation, pause, updateJingles } = useAudio();
   const [stations, setStations] = useState<RadioStation[]>([]);
   const [filteredStations, setFilteredStations] = useState<RadioStation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,14 +47,147 @@ export default function UserDashboard() {
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showDashboardSelector, setShowDashboardSelector] = useState(false);
+  const [isTrialExpired, setIsTrialExpired] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   useEffect(() => {
     fetchStations();
     if (user) {
       checkOnboardingStatus();
       checkAndShowConfetti();
+
+      // Fetch and load jingles
+      jinglesApi.getAll(user.id).then(userJingles => {
+        console.log('🎵 Loading jingles into AudioContext:', userJingles.length);
+        updateJingles(userJingles);
+      }).catch(err => console.error('Failed to load jingles:', err));
     }
   }, [user, profile]);
+
+  useEffect(() => {
+    // Wait until auth is NO LONGER loading and we have a profile
+    if (!authLoading && profile && !profile.is_admin) {
+      const isTrial = profile.subscription_status === 'trial';
+      const isActive = profile.subscription_status === 'active';
+
+      // If not active and not trial, redirect to subscription options
+      if (!isTrial && !isActive) {
+        setIsRedirecting(true);
+        navigate('/subscription-options', { replace: true });
+      }
+    }
+  }, [profile, authLoading, navigate]);
+
+  // Self-healing: Fix trial dates if they are incorrectly set to 30 days
+  useEffect(() => {
+    if (profile && profile.subscription_status === 'trial' && profile.trial_ends_at) {
+      const trialEnd = new Date(profile.trial_ends_at);
+      const now = new Date();
+      const diffDays = (trialEnd.getTime() - now.getTime()) / (1000 * 3600 * 24);
+
+      // If trial ends in more than 14 days, it's definitely wrong (should be 7)
+      if (diffDays > 14) {
+        console.log('Fixing incorrect trial date...');
+        const newEndDate = new Date();
+        // If we have start date, calculate 7 days from start. Otherwise 7 days from now.
+        if (profile.trial_started_at) {
+          const startDate = new Date(profile.trial_started_at);
+          newEndDate.setTime(startDate.getTime() + (7 * 24 * 60 * 60 * 1000));
+        } else {
+          newEndDate.setDate(newEndDate.getDate() + 7);
+        }
+
+        profilesApi.update(user!.id, {
+          trial_ends_at: newEndDate.toISOString(),
+          subscription_ends_at: newEndDate.toISOString()
+        }).then(() => {
+          window.location.reload(); // Reload to reflect changes
+        }).catch(err => console.error('Failed to fix trial date', err));
+      }
+    }
+  }, [profile, user]);
+
+  // Timer and expiration check
+  useEffect(() => {
+    if (profile?.subscription_status === 'trial' && profile.trial_ends_at) {
+      const updateTimer = () => {
+        const end = new Date(profile.trial_ends_at!);
+        const now = new Date();
+        const diff = end.getTime() - now.getTime();
+
+        if (diff <= 0) {
+          setIsTrialExpired(true);
+        }
+      };
+
+      updateTimer();
+      const interval = setInterval(updateTimer, 60000); // Check every minute
+      return () => clearInterval(interval);
+    }
+  }, [profile]);
+
+  if (authLoading || (user && !profile)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-infinity-dark-900">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-infinity-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Učitavanje profila...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isRedirecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-infinity-dark-900">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-infinity-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Preusmeravanje na pakete...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isTrialExpired) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 transition-all duration-500">
+        <div className="bg-white dark:bg-infinity-dark-800 p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border-2 border-red-500 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-500 to-orange-500"></div>
+          <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
+            <Clock className="text-red-500" size={40} />
+          </div>
+          <h2 className="text-3xl font-bold mb-4 text-gray-900 dark:text-white font-serif">Probni period je istekao!</h2>
+          <p className="mb-6 text-gray-600 dark:text-gray-300 text-lg">
+            Vaše vreme za besplatno korišćenje je isteklo.
+            <br />
+            <span className="text-sm opacity-75">Kontaktirajte nas za nastavak.</span>
+          </p>
+
+          <div className="bg-gray-50 dark:bg-infinity-dark-700 p-5 rounded-xl mb-8 text-left border border-gray-100 dark:border-gray-700">
+            <div className="mb-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Kontakt telefon</p>
+              <a href="tel:+381600000000" className="font-bold text-gray-900 dark:text-white text-xl hover:text-infinity-green-500 transition-colors">+381 60 000 0000</a>
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Email podrška</p>
+              <a href="mailto:info@infinityplay.rs" className="font-bold text-gray-900 dark:text-white text-xl hover:text-infinity-green-500 transition-colors">info@infinityplay.rs</a>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <Button fullWidth onClick={() => navigate('/subscription')} size="lg" className="font-bold text-lg">
+              Pogledaj Pakete
+            </Button>
+            <Button variant="ghost" fullWidth onClick={() => window.location.href = 'mailto:info@infinityplay.rs'}>
+              Pošalji Email
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Realtime sinhronizacija - osveži stanice kada admin izmeni
   useEventBus(EVENTS.STATION_CREATED, useCallback(() => {
@@ -106,7 +242,7 @@ export default function UserDashboard() {
         frame();
       }, 500);
 
-      localAuth.updateProfile(user.id, { confetti_shown: true });
+      profilesApi.update(user.id, { confetti_shown: true });
     }
   };
 
@@ -125,12 +261,20 @@ export default function UserDashboard() {
   }, [searchQuery, selectedGenre, stations]);
 
   const fetchStations = async () => {
-    const data = localStations.getActive();
-    const sortedData = data.sort((a, b) => a.name.localeCompare(b.name));
+    try {
+      const data = await stationsApi.getAll();
+      // Filter active stations and sort by name
+      const activeStations = data
+        .filter((s: RadioStation) => s.is_active)
+        .sort((a: RadioStation, b: RadioStation) => a.name.localeCompare(b.name));
 
-    setStations(sortedData);
-    setFilteredStations(sortedData);
-    setLoading(false);
+      setStations(activeStations);
+      setFilteredStations(activeStations);
+    } catch (error) {
+      console.error('Failed to fetch stations:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
 
@@ -154,6 +298,46 @@ export default function UserDashboard() {
 
   const genres = Array.from(new Set(stations.map(s => s.genre)));
 
+  const mojRadioStation: RadioStation | null = profile?.my_radio_stream_url
+    ? {
+        id: `moj-radio-${user?.id}`,
+        name: 'Moj Radio',
+        description: profile.display_name ? `${profile.display_name} — personalni stream` : 'Personalni radio stream',
+        genre: 'Personalni',
+        logo_url: null,
+        stream_url: profile.my_radio_stream_url,
+        medicp_id: null,
+        bitrate: 128,
+        is_featured: true,
+        is_active: true,
+        listener_count: 0,
+        icon_url: null,
+        icon_emoji: '📻',
+        background_url: null,
+        background_color: null,
+        background_type: 'gradient',
+        grid_row: null,
+        grid_column: null,
+        grid_page: 1,
+        recommended_for: [],
+        created_at: '',
+        updated_at: '',
+      }
+    : null;
+
+  const isMojRadioPlaying = mojRadioStation
+    ? currentStation?.id === mojRadioStation.id && isPlaying
+    : false;
+
+  const handleMojRadioClick = () => {
+    if (!mojRadioStation) return;
+    if (isMojRadioPlaying) {
+      pause();
+    } else {
+      playStation(mojRadioStation);
+    }
+  };
+
   const handleStationClick = (station: RadioStation) => {
     console.log('Station clicked:', station.name);
     try {
@@ -176,15 +360,18 @@ export default function UserDashboard() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors">
-      <nav className="bg-white dark:bg-infinity-dark-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40">
+      <nav className="bg-white dark:bg-infinity-dark-800 border-b border-gray-200 dark:border-gray-700">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16 md:h-20">
-            <div className="flex items-center space-x-2 md:space-x-3">
+            <button
+              onClick={() => { pause(); navigate('/'); }}
+              className="flex items-center space-x-2 md:space-x-3 hover:opacity-80 transition-opacity"
+            >
               <img src="logo.png" alt="InfinityPlay" className="h-8 md:h-10 w-auto" />
               <span className="text-lg md:text-xl font-serif font-bold text-gray-900 dark:text-white">
                 Dashboard
               </span>
-            </div>
+            </button>
 
             <div className="flex items-center space-x-2 md:space-x-4">
               <button
@@ -216,12 +403,31 @@ export default function UserDashboard() {
                 <LogOut size={16} className="mr-1" />
                 Odjavi se
               </Button>
+              {user?.email === 'darkospira@gmail.com' && (
+                <button
+                  onClick={() => setShowDashboardSelector(true)}
+                  className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-full text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                  title="Admin Panel"
+                >
+                  <Shield size={15} />
+                  <span>Admin</span>
+                </button>
+              )}
               <button
                 onClick={handleSignOut}
                 className="md:hidden p-2 rounded-full hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors"
               >
                 <LogOut size={18} className="text-gray-700 dark:text-gray-300" />
               </button>
+              {user?.email === 'darkospira@gmail.com' && (
+                <button
+                  onClick={() => setShowDashboardSelector(true)}
+                  className="md:hidden p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  title="Admin Panel"
+                >
+                  <Shield size={18} className="text-red-600 dark:text-red-400" />
+                </button>
+              )}
             </div>
           </div >
         </div >
@@ -244,8 +450,12 @@ export default function UserDashboard() {
                 </p>
               </div>
               {profile?.subscription_tier && (
-                <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg border border-white/30">
-                  <span className="text-white text-sm md:text-base font-bold uppercase">{profile.subscription_tier}</span>
+                <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+                  <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg border border-white/30">
+                    <span className="text-white text-sm md:text-base font-bold uppercase">
+                      {profile.subscription_status === 'trial' ? 'PROBNI PAKET' : profile.subscription_tier}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -333,6 +543,15 @@ export default function UserDashboard() {
             </div>
           </div>
 
+          {/* Moj Radio — prikazan uvek na vrhu ako admin postavi stream */}
+          {mojRadioStation && (
+            <MojRadioCard
+              isPlaying={isMojRadioPlaying}
+              onClick={handleMojRadioClick}
+              displayName={profile?.display_name}
+            />
+          )}
+
           {loading ? (
             <div className="text-center py-12">
               <div className="w-12 h-12 border-4 border-infinity-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -349,68 +568,12 @@ export default function UserDashboard() {
                 const isCurrentlyPlaying = currentStation?.id === station.id && isPlaying;
 
                 return (
-                  <div
+                  <StationCard
                     key={station.id}
-                    onClick={() => handleStationClick(station)}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${isCurrentlyPlaying
-                      ? 'border-infinity-green-500 bg-infinity-green-50 dark:bg-infinity-green-900/20 shadow-lg'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-infinity-green-300 dark:hover:border-infinity-green-700'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="w-12 h-12 rounded-xl flex items-center justify-center relative overflow-hidden">
-                        <div className={`absolute inset-0 bg-gradient-to-br ${getGenreStyle(station.genre).gradient}`}></div>
-                        <div className={`absolute inset-0 ${getGenreStyle(station.genre).pattern}`}></div>
-                        <Music className="text-white relative z-10" size={24} />
-                      </div>
-                      <button className={`w-10 h-10 rounded-full flex items-center justify-center ${isCurrentlyPlaying
-                        ? 'bg-infinity-green-600'
-                        : 'bg-gray-200 dark:bg-gray-700'
-                        }`}>
-                        {isCurrentlyPlaying ? (
-                          <Pause className="text-white" size={20} />
-                        ) : (
-                          <Play className="text-gray-700 dark:text-gray-300" size={20} />
-                        )}
-                      </button>
-                    </div>
-                    <h3 className="font-bold text-gray-900 dark:text-white mb-1 truncate">
-                      {station.name}
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                      {station.genre}
-                    </p>
-                    {station.description && (
-                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-1 line-clamp-2">
-                        {station.description}
-                      </p>
-                    )}
-                    {station.recommended_for && station.recommended_for.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {station.recommended_for.slice(0, 3).map((type) => (
-                          <span
-                            key={type}
-                            className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-xs rounded-full"
-                          >
-                            {type}
-                          </span>
-                        ))}
-                        {station.recommended_for.length > 3 && (
-                          <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs rounded-full">
-                            +{station.recommended_for.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {isCurrentlyPlaying && (
-                      <div className="mt-2 flex items-center space-x-1">
-                        <div className="w-1 h-3 bg-infinity-green-600 rounded-full animate-pulse"></div>
-                        <div className="w-1 h-4 bg-infinity-green-600 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                        <div className="w-1 h-3 bg-infinity-green-600 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-                        <span className="text-xs text-infinity-green-600 ml-2">Svira</span>
-                      </div>
-                    )}
-                  </div>
+                    station={station}
+                    isCurrentlyPlaying={isCurrentlyPlaying}
+                    onClick={handleStationClick}
+                  />
                 );
               })}
             </div>
@@ -434,6 +597,10 @@ export default function UserDashboard() {
         isOpen={showOnboarding}
         onClose={() => setShowOnboarding(false)}
         onComplete={handleOnboardingComplete}
+      />
+      <DashboardSelectionModal
+        isOpen={showDashboardSelector}
+        onClose={() => setShowDashboardSelector(false)}
       />
     </div>
   );

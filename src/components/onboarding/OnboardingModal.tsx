@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { localAuth } from '../../lib/localStorage';
+import { profiles } from '../../lib/api';
 import { BusinessCategory } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
-import { User, AlertCircle, Sparkles, Building2 } from 'lucide-react';
+import { AlertCircle, Sparkles, Building2 } from 'lucide-react';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -13,17 +13,8 @@ interface OnboardingModalProps {
   onComplete: () => void;
 }
 
-const avatarOptions = [
-  '😀', '😎', '🥳', '🤓', '😇',
-  '🦸', '🦹', '🧙', '🧚', '🧛',
-  '🐶', '🐱', '🐭', '🐹', '🐰',
-  '🦊', '🐻', '🐼', '🐨', '🐯'
-];
-
 export default function OnboardingModal({ isOpen, onClose, onComplete }: OnboardingModalProps) {
   const { user, refreshProfile } = useAuth();
-  const [displayName, setDisplayName] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState('😀');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [customLocation, setCustomLocation] = useState('');
   const [categories, setCategories] = useState<BusinessCategory[]>([]);
@@ -70,10 +61,8 @@ export default function OnboardingModal({ isOpen, onClose, onComplete }: Onboard
   };
 
   const handleSave = async () => {
-    if (!user) return;
-
-    if (!displayName.trim()) {
-      setError('Molimo unesite naziv');
+    if (!user) {
+      setError('Korisnik nije pronađen. Molimo osvežite stranicu.');
       return;
     }
 
@@ -91,15 +80,17 @@ export default function OnboardingModal({ isOpen, onClose, onComplete }: Onboard
     setError('');
 
     try {
-      const updated = localAuth.updateProfile(user.id, {
-        display_name: displayName.trim(),
-        avatar_url: selectedAvatar,
+      const defaultDisplayName = user.email ? user.email.split('@')[0] : 'Korisnik';
+      const defaultAvatar = '😀';
+
+      // Update via API instead of localAuth
+      await profiles.update(user.id, {
+        display_name: defaultDisplayName,
+        avatar_url: defaultAvatar,
         business_category: selectedCategory,
         custom_location: selectedCategory === 'other' ? customLocation.trim() : null,
         onboarding_completed: true,
       });
-
-      if (!updated) throw new Error('Greška pri ažuriranju profila');
 
       await refreshProfile();
       onComplete();
@@ -116,20 +107,14 @@ export default function OnboardingModal({ isOpen, onClose, onComplete }: Onboard
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleSkip} title="Personalizujte Vaš Profil">
+    <Modal isOpen={isOpen} onClose={handleSkip} title="Personalizacija">
       <div className="space-y-6">
         <div className="text-center mb-6">
           <div className="w-16 h-16 bg-gradient-infinity rounded-full flex items-center justify-center mx-auto mb-4">
             <Sparkles className="text-white" size={32} />
           </div>
           <p className="text-gray-600 dark:text-gray-400">
-            Hajde da personalizujemo vaš profil! Izaberite avatar, unesite nadimak i odaberite kategoriju vašeg poslovanja.
-          </p>
-          <p className="text-sm text-orange-600 dark:text-orange-400 mt-2">
-            Napomena: Ako preskočite ovaj korak, moći ćete da popunite ove informacije kasnije, ali će vam se ovaj prozor prikazivati pri svakom logovanju dok ne popunite profil.
-          </p>
-          <p className="text-sm font-semibold text-red-600 dark:text-red-400 mt-2">
-            VAŽNO: Kategorija poslovanja se može izabrati samo jednom i ne može biti promenjena naknadno!
+            Odaberite kategoriju vašeg poslovanja.
           </p>
         </div>
 
@@ -139,46 +124,6 @@ export default function OnboardingModal({ isOpen, onClose, onComplete }: Onboard
             <span className="text-red-700 dark:text-red-400">{error}</span>
           </div>
         )}
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Nadimak
-          </label>
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <Input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="pl-10"
-              placeholder="Npr. Caffe Bar Infinity ili vaš nadimak"
-            />
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-            Možete uneti naziv objekta, vaše ime ili nadimak - ovo će biti prikazano na vašem profilu
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-            Odaberite Avatar
-          </label>
-          <div className="grid grid-cols-5 gap-3 max-h-48 overflow-y-auto">
-            {avatarOptions.map((avatar) => (
-              <button
-                key={avatar}
-                type="button"
-                onClick={() => setSelectedAvatar(avatar)}
-                className={`w-full aspect-square text-4xl flex items-center justify-center rounded-2xl transition-all ${selectedAvatar === avatar
-                  ? 'bg-gradient-infinity shadow-glow-green scale-110 ring-4 ring-infinity-green-500'
-                  : 'bg-gray-100 dark:bg-infinity-dark-700 hover:scale-105 hover:bg-gray-200 dark:hover:bg-infinity-dark-600'
-                  }`}
-              >
-                {avatar}
-              </button>
-            ))}
-          </div>
-        </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -209,9 +154,6 @@ export default function OnboardingModal({ isOpen, onClose, onComplete }: Onboard
                   ))}
                 </select>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                Izaberite kategoriju koja najbolje opisuje vaš objekat. Ova opcija se ne može promeniti kasnije!
-              </p>
 
               {selectedCategory === 'other' && (
                 <div className="mt-4">

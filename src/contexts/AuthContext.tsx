@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { localAuth } from '../lib/localStorage';
+import { auth, profiles } from '../lib/api';
 import { UserProfile } from '../types';
 
 interface LocalUser {
@@ -13,7 +13,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   session: any | null;
   loading: boolean;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, first_name: string, last_name: string, phone_number: string, country_code: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -29,30 +29,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = async () => {
     if (user) {
-      const profileData = localAuth.getProfile(user.id);
-      setProfile(profileData);
+      try {
+        const profileData = await profiles.getById(user.id);
+        setProfile(profileData);
+      } catch (error) {
+        console.error('Failed to refresh profile:', error);
+      }
     }
   };
 
   useEffect(() => {
-    // Proveri da li postoji trenutni korisnik
-    const currentUser = localAuth.getCurrentUser();
+    const initAuth = async () => {
+      try {
+        const currentUser = await auth.getCurrentUser();
 
-    if (currentUser) {
-      setUser(currentUser);
-      const profileData = localAuth.getProfile(currentUser.id);
-      setProfile(profileData);
-      setSession({ user: currentUser });
-    }
+        if (currentUser) {
+          setUser({
+            id: currentUser.id,
+            email: currentUser.email || '',
+            created_at: currentUser.created_at || new Date().toISOString(),
+          });
 
-    setLoading(false);
+          // Fetch full profile
+          try {
+            const profileData = await profiles.getById(currentUser.id);
+            setProfile(profileData);
+          } catch (e) {
+            console.error('Error fetching profile:', e);
+            // Fallback to basic user data if profile fetch fails
+            setProfile(currentUser as unknown as UserProfile);
+          }
+
+          setSession({ user: currentUser });
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        // Clear token if invalid
+        auth.logout();
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
   }, []);
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, first_name: string, last_name: string, phone_number: string, country_code: string) => {
     try {
-      const { user: newUser, profile: newProfile } = await localAuth.signUp(email, password);
-      setUser(newUser);
-      setProfile(newProfile);
+      // Register returns { user, token }
+      const data = await auth.register(email, password, first_name, last_name, phone_number, country_code);
+
+      const newUser = data.user;
+
+      setUser({
+        id: newUser.id,
+        email: newUser.email || '',
+        created_at: new Date().toISOString(),
+      });
+
+      setProfile(newUser as unknown as UserProfile);
       setSession({ user: newUser });
     } catch (error) {
       throw error;
@@ -61,9 +96,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { user: loggedUser, profile: userProfile } = await localAuth.signIn(email, password);
-      setUser(loggedUser);
-      setProfile(userProfile ?? null);
+      // Login returns { user, token }
+      const data = await auth.login(email, password);
+
+      const loggedUser = data.user;
+
+      setUser({
+        id: loggedUser.id,
+        email: loggedUser.email || '',
+        created_at: loggedUser.created_at || new Date().toISOString(),
+      });
+
+      setProfile(loggedUser as unknown as UserProfile);
       setSession({ user: loggedUser });
     } catch (error) {
       throw error;
@@ -71,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await localAuth.signOut();
+    auth.logout();
     setUser(null);
     setProfile(null);
     setSession(null);

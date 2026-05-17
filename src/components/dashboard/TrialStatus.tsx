@@ -1,22 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Clock, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { localAuth } from '../../lib/localStorage';
+import { profiles as profilesApi } from '../../lib/api';
 import Card from '../ui/Card';
-import Button from '../ui/Button';
 
 export default function TrialStatus() {
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
     const [timeRemaining, setTimeRemaining] = useState<string>('');
     const [isTrialActive, setIsTrialActive] = useState(false);
-    const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
-    const [canCancelTrial, setCanCancelTrial] = useState(false);
+    const [_canCancelTrial, setCanCancelTrial] = useState(false);
 
     useEffect(() => {
-        if (!user) return;
-
-        const profile = localAuth.getProfile(user.id);
-        if (!profile) return;
+        if (!user || !profile) return;
 
         // Admin users don't have trial status
         if (profile.is_admin) {
@@ -24,14 +19,15 @@ export default function TrialStatus() {
             return;
         }
 
-        // Check if user is in trial period
-        const isTrial = profile.subscription_status === 'trial' &&
-            profile.trial_ends_at &&
-            new Date(profile.trial_ends_at) > new Date();
+        // Check if user is in trial period (relaxed check)
+        const isTrial = profile.subscription_status === 'trial';
 
-        setIsTrialActive(!!isTrial);
-        setTrialEndsAt(profile.trial_ends_at || null);
-        setCanCancelTrial(!!isTrial && !profile.cancel_at_period_end);
+        // Ensure we preserve the valid date check for logic, but show UI if status is trial
+        const hasValidDate = profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
+
+        setIsTrialActive(isTrial);
+        // Only allow cancel if we have a valid future date AND not already cancelled
+        setCanCancelTrial(isTrial && !!hasValidDate && !profile.cancel_at_period_end);
 
         if (isTrial && profile.trial_ends_at) {
             updateTimeRemaining(profile.trial_ends_at);
@@ -40,8 +36,11 @@ export default function TrialStatus() {
             }, 1000);
 
             return () => clearInterval(interval);
+        } else if (isTrial) {
+            // Fallback if date is missing
+            setTimeRemaining('7 dana');
         }
-    }, [user]);
+    }, [user, profile]);
 
     const updateTimeRemaining = (endsAt: string) => {
         const now = new Date().getTime();
@@ -63,125 +62,49 @@ export default function TrialStatus() {
         setTimeRemaining(`${days}d ${hours}h ${minutes}m ${seconds}s`);
     };
 
-    const handleTrialExpired = () => {
-        if (!user) return;
+    const handleTrialExpired = async () => {
+        if (!user || !profile) return;
 
-        const profile = localAuth.getProfile(user.id);
-        if (!profile) return;
-
-        if (!profile.cancel_at_period_end) {
-            // Auto-charge and convert to paid subscription
-            const subscriptionEndsAt = new Date();
-            subscriptionEndsAt.setDate(subscriptionEndsAt.getDate() + 30);
-
-            localAuth.updateProfile(user.id, {
-                subscription_status: 'active',
-                subscription_ends_at: subscriptionEndsAt.toISOString(),
-                trial_ends_at: null,
-            });
-
-            alert('Vaš probni period je istekao. Pretplata je automatski aktivirana na 30 dana. Plaćanje će biti izvršeno putem PayPal-a.');
-            window.location.reload();
-        } else {
-            // Trial expired and user cancelled
-            localAuth.updateProfile(user.id, {
-                subscription_status: 'inactive',
-                subscription_tier: 'free',
+        // Trial expired - update status to 'expired' and revoke access
+        try {
+            await profilesApi.update(user.id, {
+                subscription_status: 'expired',
+                subscription_tier: 'free', // Optional, helps with logic fallback
                 trial_ends_at: null,
                 cancel_at_period_end: false,
             });
 
-            alert('Vaš probni period je istekao. Pretplatite se ponovo da nastavite.');
+            alert('Vaš probni period je istekao. Kontaktirajte administratora za nastavak ili proverite opcije pretplate.');
+            window.location.reload();
+        } catch (error) {
+            console.error('Error expiring trial:', error);
+            // Even if API fails, reload so the frontend redirect logic kicks in (if relying on date)
             window.location.reload();
         }
-    };
-
-    const handleCancelTrial = () => {
-        if (!user) return;
-
-        if (!confirm('Da li ste sigurni da želite da otkažete pretplatu? Moći ćete da koristite sve funkcije do isteka probnog perioda, ali vam neće biti naplaćeno.')) {
-            return;
-        }
-
-        localAuth.updateProfile(user.id, {
-            cancel_at_period_end: true,
-        });
-
-        setCanCancelTrial(false);
-        alert('Pretplata je otkazana. Možete nastaviti da koristite sve funkcije do isteka probnog perioda.');
     };
 
     if (!isTrialActive) return null;
 
     return (
         <Card className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 border-2 border-purple-200 dark:border-purple-700">
-            <div className="flex items-start justify-between">
-                <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center">
-                            <Clock className="text-white" size={20} />
-                        </div>
-                        <div>
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
+                        <Clock className="text-white" size={20} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                                 Probni Period Aktivan
                             </h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                                7-dnevni besplatni probni period
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="bg-white dark:bg-infinity-dark-800 rounded-xl p-4 mb-4">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Preostalo vreme:
-                            </span>
-                            <span className="text-2xl font-bold text-purple-600 dark:text-purple-400 font-mono">
+                            <span className="text-md font-bold text-purple-600 dark:text-purple-400 font-mono bg-white dark:bg-infinity-dark-800 px-3 py-1 rounded-full border border-purple-200 dark:border-purple-700">
                                 {timeRemaining}
                             </span>
                         </div>
-                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                            <div
-                                className="bg-gradient-to-r from-purple-500 to-indigo-600 h-2 rounded-full transition-all duration-1000"
-                                style={{
-                                    width: trialEndsAt
-                                        ? `${Math.max(0, Math.min(100, ((new Date(trialEndsAt).getTime() - new Date().getTime()) / (7 * 24 * 60 * 60 * 1000)) * 100))}%`
-                                        : '0%'
-                                }}
-                            />
-                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Uživajte u svim funkcijama besplatno.
+                        </p>
                     </div>
-
-                    <div className="space-y-2 mb-4">
-                        <div className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
-                            <CheckCircle size={16} className="text-green-500" />
-                            <span>Sve funkcije dostupne tokom probnog perioda</span>
-                        </div>
-                        <div className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
-                            {canCancelTrial ? (
-                                <>
-                                    <AlertCircle size={16} className="text-yellow-500" />
-                                    <span>Automatsko plaćanje nakon isteka probnog perioda</span>
-                                </>
-                            ) : (
-                                <>
-                                    <XCircle size={16} className="text-red-500" />
-                                    <span>Pretplata otkazana - neće biti naplaćeno</span>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    {canCancelTrial && (
-                        <Button
-                            variant="ghost"
-                            onClick={handleCancelTrial}
-                            className="w-full border-2 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"
-                        >
-                            <XCircle size={18} className="mr-2" />
-                            Otkaži Pretplatu
-                        </Button>
-                    )}
                 </div>
             </div>
         </Card>

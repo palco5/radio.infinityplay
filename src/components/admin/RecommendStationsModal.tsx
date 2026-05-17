@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { UserProfile, RadioStation } from '../../types';
-import { localStations } from '../../lib/localStorage';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { Star, Check } from 'lucide-react';
@@ -9,6 +8,7 @@ interface RecommendStationsModalProps {
     isOpen: boolean;
     onClose: () => void;
     user: UserProfile;
+    stations: RadioStation[];
     onSave: (userId: string, stationIds: string[]) => void;
 }
 
@@ -16,18 +16,18 @@ export default function RecommendStationsModal({
     isOpen,
     onClose,
     user,
+    stations,
     onSave,
 }: RecommendStationsModalProps) {
-    const [stations, setStations] = useState<RadioStation[]>([]);
+    const [stationList, setStationList] = useState<RadioStation[]>([]);
     const [selectedStations, setSelectedStations] = useState<string[]>([]);
 
     useEffect(() => {
         if (isOpen) {
-            const allStations = localStations.getActive();
-            setStations(allStations);
+            setStationList(stations.filter(s => s.is_active));
             setSelectedStations(user.recommended_stations || []);
         }
-    }, [isOpen, user]);
+    }, [isOpen, user, stations]);
 
     const toggleStation = (stationId: string) => {
         setSelectedStations((prev) =>
@@ -66,7 +66,7 @@ export default function RecommendStationsModal({
                         Izaberite stanice koje želite da preporučite ovom korisniku:
                     </p>
                     <div className="max-h-96 overflow-y-auto space-y-2">
-                        {stations.map((station) => {
+                        {stationList.map((station) => {
                             const isSelected = selectedStations.includes(station.id);
                             const isRecommendedForCategory = user.business_category &&
                                 station.recommended_for.some(cat =>
@@ -78,8 +78,8 @@ export default function RecommendStationsModal({
                                     key={station.id}
                                     onClick={() => toggleStation(station.id)}
                                     className={`w-full p-4 rounded-xl border-2 transition-all text-left ${isSelected
-                                            ? 'border-infinity-green-500 bg-infinity-green-50 dark:bg-infinity-green-900/20'
-                                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                                        ? 'border-infinity-green-500 bg-infinity-green-50 dark:bg-infinity-green-900/20'
+                                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                                         }`}
                                 >
                                     <div className="flex items-center justify-between">
@@ -109,8 +109,8 @@ export default function RecommendStationsModal({
                                         </div>
                                         <div
                                             className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${isSelected
-                                                    ? 'bg-infinity-green-500 border-infinity-green-500'
-                                                    : 'border-gray-300 dark:border-gray-600'
+                                                ? 'bg-infinity-green-500 border-infinity-green-500'
+                                                : 'border-gray-300 dark:border-gray-600'
                                                 }`}
                                         >
                                             {isSelected && <Check className="text-white" size={16} />}

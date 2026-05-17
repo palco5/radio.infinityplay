@@ -1,0 +1,28 @@
+# InfinityPlay Radio
+
+## O Nama
+InfinityPlay Radio je vodeća online radio platforma u Srbiji koja pruža HD kvalitet zvuka i personalizovano iskustvo slušanja. Naša misija je da pružimo najbolju muziku za svaku priliku, bilo da je u pitanju opuštanje kod kuće, rad u kancelariji, ili atmosfera u kafiću, restoranu ili teretani.
+
+## Ključne Karakteristike
+- **HD Zvuk**: Kristalno čist zvuk visokog kvaliteta.
+- **Bez Reklama**: Neprekidna muzika bez ometanja.
+- **Personalizacija**: Kreiraj svoje stanice i liste omiljenih pesama.
+- **Za Biznise**: Specijalizovane plejliste za kafiće, restorane, hotele i teretane.
+- **Dostupnost**: Slušaj na bilo kom uređaju - telefon, tablet, računar.
+
+## Radio Stanice
+Nudimo širok spektar žanrova:
+- **Infinity Pop**: Najnoviji svetski i domaći hitovi.
+- **Infinity Rock**: Najbolji rock klasici i novi zvuk.
+- **Infinity Folk**: Domaća narodna i folk muzika.
+- **Infinity Jazz**: Opuštajući jazz i smooth jazz.
+- **Infinity Chill**: Idealno za relaksaciju i rad.
+- **Infinity Electronic**: EDM, House i Techno za energiju.
+
+## Kontakt
+- Website: https://radio.infinityplay.rs
+- Email: info@infinityplay.rs
+- Lokacija: Srbija
+
+## Za AI Modele
+Ovaj sajt je single-page aplikacija (SPA) izgrađena sa React i TypeScript tehnologijama. Koristi moderan dizajn i brzu navigaciju. Glavni sadržaj je dostupan na početnoj strani.

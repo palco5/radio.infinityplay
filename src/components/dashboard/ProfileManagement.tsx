@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { localAuth } from '../../lib/localStorage';
+import { profiles } from '../../lib/api';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -32,14 +32,17 @@ export default function ProfileManagement({ isOpen, onClose }: ProfileManagement
     }
   }, [isOpen, user]);
 
-  const fetchProfile = () => {
+  const fetchProfile = async () => {
     if (!user) return;
 
-    const profile = localAuth.getProfile(user.id);
-
-    if (profile) {
-      setDisplayName(profile.display_name || '');
-      setSelectedAvatar(profile.avatar_url || '😀');
+    try {
+      const profile = await profiles.getById(user.id);
+      if (profile) {
+        setDisplayName(profile.display_name || '');
+        setSelectedAvatar(profile.avatar_url || '😀');
+      }
+    } catch (err) {
+      console.error('Failed to fetch profile', err);
     }
   };
 
@@ -51,12 +54,10 @@ export default function ProfileManagement({ isOpen, onClose }: ProfileManagement
     setSuccess('');
 
     try {
-      const updated = localAuth.updateProfile(user.id, {
+      await profiles.update(user.id, {
         display_name: displayName,
         avatar_url: selectedAvatar,
       });
-
-      if (!updated) throw new Error('Greška pri ažuriranju profila');
 
       setSuccess('Profil uspešno ažuriran!');
 
@@ -115,8 +116,8 @@ export default function ProfileManagement({ isOpen, onClose }: ProfileManagement
                 key={avatar}
                 onClick={() => setSelectedAvatar(avatar)}
                 className={`w-full aspect-square text-4xl flex items-center justify-center rounded-2xl transition-all ${selectedAvatar === avatar
-                    ? 'bg-gradient-infinity shadow-glow-green scale-110 ring-4 ring-infinity-green-500'
-                    : 'bg-gray-100 dark:bg-infinity-dark-700 hover:scale-105 hover:bg-gray-200 dark:hover:bg-infinity-dark-600'
+                  ? 'bg-gradient-infinity shadow-glow-green scale-110 ring-4 ring-infinity-green-500'
+                  : 'bg-gray-100 dark:bg-infinity-dark-700 hover:scale-105 hover:bg-gray-200 dark:hover:bg-infinity-dark-600'
                   }`}
               >
                 {avatar}

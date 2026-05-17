@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { localAuth } from '../../lib/localStorage';
+import { profiles as profilesApi } from '../../lib/api';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { Moon, Sun, Mail, Bell, Check, AlertCircle } from 'lucide-react';
@@ -12,7 +12,7 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const { user, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [newsletterSubscription, setNewsletterSubscription] = useState(false);
@@ -21,20 +21,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (isOpen && user) {
+    if (isOpen && user && profile) {
       fetchSettings();
     }
-  }, [isOpen, user]);
+  }, [isOpen, user, profile]);
 
   const fetchSettings = async () => {
-    if (!user) return;
-
-    const profile = localAuth.getProfile(user.id);
-
-    if (profile) {
-      setEmailNotifications(profile.email_notifications ?? true);
-      setNewsletterSubscription(profile.newsletter_subscribed ?? false);
-    }
+    if (!profile) return;
+    setEmailNotifications(profile.email_notifications ?? true);
+    setNewsletterSubscription(profile.newsletter_subscribed ?? false);
   };
 
   const handleSaveSettings = async () => {
@@ -45,12 +40,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setSuccess('');
 
     try {
-      const updated = localAuth.updateProfile(user.id, {
+      await profilesApi.update(user.id, {
         email_notifications: emailNotifications,
         newsletter_subscribed: newsletterSubscription,
       });
 
-      if (!updated) throw new Error('Greška pri čuvanju podešavanja');
+
 
       await refreshProfile();
 

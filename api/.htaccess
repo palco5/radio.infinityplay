@@ -1,0 +1,24 @@
+RewriteEngine On
+RewriteBase /api/
+
+# Ensure Authorization header is passed to PHP
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>
+
+# Handle CORS preflight requests
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
+
+# Route requests to appropriate PHP files
+RewriteRule ^health$ health.php [L]
+RewriteRule ^auth/register$ auth.php?path=register [L]
+RewriteRule ^auth/login$ auth.php?path=login [L]
+RewriteRule ^auth/me$ auth.php?path=me [L]
+RewriteRule ^auth/users$ auth.php?path=users [L]
+RewriteRule ^stations$ stations.php [L]
+RewriteRule ^stations/(.+)$ stations.php?id=$1 [L]
+RewriteRule ^profiles/(.+)$ profiles.php?id=$1 [L]
+RewriteRule ^favorites$ favorites.php [L]
+RewriteRule ^favorites/(.+)$ favorites.php?station_id=$1 [L]
+RewriteRule ^send-email$ send_email.php [L]
