@@ -8,68 +8,64 @@ header('Cache-Control: no-cache, no-store, must-revalidate');
 $mount     = $_GET['mount'] ?? '';
 $streamUrl = $_GET['url']   ?? '';
 
+$title    = '';
+$coverart = null;
+$source   = 'icy';
+$extra    = [];
+
 if ($streamUrl) {
     // Direct stream URL mode (any Icecast/Shoutcast stream)
     if (!preg_match('#^https?://#', $streamUrl) || strlen($streamUrl) > 512) {
         echo json_encode(['error' => 'Invalid URL', 'title' => '', 'coverart' => null]);
         exit;
     }
+    $extra['url'] = $streamUrl;
 
-    // If it's one of our own MediaCP-hosted streams, try the richer JSON API first
-    // (gives us cover art in addition to the title, and is cheaper than an ICY probe).
+    // If it's one of our own MediaCP-hosted streams, try the richer JSON API first.
     $identifier = extractMediaCPIdentifier($streamUrl);
     $mediaCP = $identifier ? getMediaCPNowPlaying($identifier) : null;
 
     if ($mediaCP) {
-        echo json_encode([
-            'title'     => $mediaCP['title'],
-            'coverart'  => $mediaCP['coverart'],
-            'source'    => 'mediacp',
-            'url'       => $streamUrl,
-            'timestamp' => time(),
-        ]);
+        $title    = $mediaCP['title'];
+        $coverart = $mediaCP['coverart'];
+        $source   = 'mediacp';
+    } else {
+        $title = getIcyTitle($streamUrl);
+    }
+} else {
+    if (!preg_match('/^[a-zA-Z0-9\-]+$/', $mount) || strlen($mount) > 64) {
+        echo json_encode(['error' => 'Invalid mount', 'title' => '', 'coverart' => null]);
         exit;
     }
+    $extra['mount'] = $mount;
 
-    $title = getIcyTitle($streamUrl);
-    echo json_encode([
-        'title'     => $title,
-        'coverart'  => null,
-        'source'    => 'icy',
-        'url'       => $streamUrl,
-        'timestamp' => time(),
-    ]);
-    exit;
+    $mediaCP = getMediaCPNowPlaying($mount);
+
+    if ($mediaCP) {
+        $title    = $mediaCP['title'];
+        $coverart = $mediaCP['coverart'];
+        $source   = 'mediacp';
+    } else {
+        $title = getIcyTitle('https://media.infinityplay.rs/stream/' . $mount);
+    }
 }
 
-if (!preg_match('/^[a-zA-Z0-9\-]+$/', $mount) || strlen($mount) > 64) {
-    echo json_encode(['error' => 'Invalid mount', 'title' => '', 'coverart' => null]);
-    exit;
+// Regardless of where the raw title came from, look it up on iTunes for a
+// clean "Artist - Title" and reliable high-res cover art — raw stream titles
+// are often mangled ("(Official Lyrics Video 2025) (128kbit_AAC)" etc).
+$itunes = $title ? lookupItunes(cleanRawTitle($title)) : null;
+if ($itunes) {
+    $title    = $itunes['title'];
+    $coverart = $itunes['coverart'];
+    $source   = 'itunes';
 }
 
-$mediaCP = getMediaCPNowPlaying($mount);
-
-if ($mediaCP) {
-    echo json_encode([
-        'title'     => $mediaCP['title'],
-        'coverart'  => $mediaCP['coverart'],
-        'source'    => 'mediacp',
-        'mount'     => $mount,
-        'timestamp' => time(),
-    ]);
-    exit;
-}
-
-$streamUrl = 'https://media.infinityplay.rs/stream/' . $mount;
-$title = getIcyTitle($streamUrl);
-
-echo json_encode([
+echo json_encode(array_merge([
     'title'     => $title,
-    'coverart'  => null,
-    'source'    => 'icy',
-    'mount'     => $mount,
+    'coverart'  => $coverart,
+    'source'    => $source,
     'timestamp' => time(),
-]);
+], $extra));
 
 // Pull the mount/station name out of a MediaCP-hosted stream URL, e.g.
 // https://media.infinityplay.rs/stream/ZlatnaKruna -> ZlatnaKruna
@@ -121,6 +117,69 @@ function getMediaCPNowPlaying($identifier)
     return [
         'title'    => $data['nowplaying'],
         'coverart' => $data['coverart'] ?? null,
+    ];
+}
+
+// Strip common junk trailing tags from ripped/rebroadcast stream titles, e.g.
+// "Artist - Song (Official Lyrics Video 2025) (128kbit_AAC)" -> "Artist - Song".
+// Only strips a trailing (...)/[...] group if its contents look like junk —
+// legitimate tags like "(Remix)" or "(feat. X)" are left alone.
+function cleanRawTitle($raw)
+{
+    $junkWords = '/\d+\s*k(bit|bps)|\b(official|video|audio|lyrics?|visualizer|hd|hq|mv|aac|mp3|stream)\b/i';
+    $title = trim($raw);
+
+    while (preg_match('/^(.*?)[\(\[]([^\)\]]*)[\)\]]\s*$/', $title, $m)) {
+        $bracketContent = str_replace('_', ' ', $m[2]);
+        if (preg_match($junkWords, $bracketContent)) {
+            $title = trim($m[1]);
+        } else {
+            break;
+        }
+    }
+
+    return trim($title, " -\t\n\r\0\x0B");
+}
+
+// Look up a cleaned "Artist - Title" string on the iTunes Search API to get
+// canonical naming + reliable cover art. Returns null if no match.
+function lookupItunes($term)
+{
+    $term = trim($term);
+    if ($term === '') {
+        return null;
+    }
+
+    $url = 'https://itunes.apple.com/search?' . http_build_query([
+        'term'   => $term,
+        'media'  => 'music',
+        'entity' => 'song',
+        'limit'  => 1,
+    ]);
+
+    $context = stream_context_create([
+        'http' => ['timeout' => 4, 'ignore_errors' => true],
+    ]);
+
+    $response = @file_get_contents($url, false, $context);
+    if ($response === false) {
+        return null;
+    }
+
+    $data = json_decode($response, true);
+    if (empty($data['results'][0])) {
+        return null;
+    }
+
+    $result   = $data['results'][0];
+    $artwork  = $result['artworkUrl100'] ?? null;
+    if ($artwork) {
+        $artwork = str_replace('100x100bb', '600x600bb', $artwork);
+    }
+
+    return [
+        'title'    => $result['artistName'] . ' - ' . $result['trackName'],
+        'coverart' => $artwork,
     ];
 }
 
