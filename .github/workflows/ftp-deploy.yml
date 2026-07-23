@@ -31,7 +31,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: ./radio.infinityplay.rs/public_html/
+          server-dir: ./
           dangerously-force-passionate-ssl: true
 
       - name: Sync PHP API via FTP
@@ -41,5 +41,5 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./api/
-          server-dir: ./radio.infinityplay.rs/public_html/api/
+          server-dir: ./api/
           dangerously-force-passionate-ssl: true
