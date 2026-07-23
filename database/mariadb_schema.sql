@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   -- Business info
   business_category VARCHAR(100),
   custom_location VARCHAR(255),
+  venue_name VARCHAR(255),
   
   -- Trial & UI
   onboarding_completed BOOLEAN DEFAULT FALSE,
@@ -170,6 +171,29 @@ VALUES
    JSON_ARRAY('Noćni klub', 'Teretana', 'Bar'), TRUE);
 
 -- ============================================
+-- 7. REMOTE SESSIONS TABELA (Daljinski upravljač)
+-- ============================================
+CREATE TABLE IF NOT EXISTS remote_sessions (
+  device_id VARCHAR(64) NOT NULL,
+  user_id VARCHAR(36) NOT NULL,
+  device_type VARCHAR(20) DEFAULT 'desktop',
+  device_name VARCHAR(100) DEFAULT 'Uređaj',
+  station_id VARCHAR(36) NULL,
+  station_name VARCHAR(200) NULL,
+  is_playing TINYINT(1) DEFAULT 0,
+  pending_command VARCHAR(300) NULL,
+  command_id VARCHAR(36) NULL,
+  last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (device_id),
+  INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================
 -- GOTOVO! 🎉
 -- ============================================
 -- Kopiraj i pokreni ovu skriptu u phpMyAdmin-u na Loopia hosting-u
+
+-- ============================================
+-- MIGRACIJE (pokrenuti ako baza već postoji)
+-- ============================================
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS venue_name VARCHAR(255) AFTER custom_location;

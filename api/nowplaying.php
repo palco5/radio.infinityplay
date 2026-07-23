@@ -1,4 +1,6 @@
 <?php
+require_once 'config.php';
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Cache-Control: no-cache, no-store, must-revalidate');
@@ -9,12 +11,31 @@ $streamUrl = $_GET['url']   ?? '';
 if ($streamUrl) {
     // Direct stream URL mode (any Icecast/Shoutcast stream)
     if (!preg_match('#^https?://#', $streamUrl) || strlen($streamUrl) > 512) {
-        echo json_encode(['error' => 'Invalid URL', 'title' => '']);
+        echo json_encode(['error' => 'Invalid URL', 'title' => '', 'coverart' => null]);
         exit;
     }
+
+    // If it's one of our own MediaCP-hosted streams, try the richer JSON API first
+    // (gives us cover art in addition to the title, and is cheaper than an ICY probe).
+    $identifier = extractMediaCPIdentifier($streamUrl);
+    $mediaCP = $identifier ? getMediaCPNowPlaying($identifier) : null;
+
+    if ($mediaCP) {
+        echo json_encode([
+            'title'     => $mediaCP['title'],
+            'coverart'  => $mediaCP['coverart'],
+            'source'    => 'mediacp',
+            'url'       => $streamUrl,
+            'timestamp' => time(),
+        ]);
+        exit;
+    }
+
     $title = getIcyTitle($streamUrl);
     echo json_encode([
         'title'     => $title,
+        'coverart'  => null,
+        'source'    => 'icy',
         'url'       => $streamUrl,
         'timestamp' => time(),
     ]);
@@ -22,7 +43,20 @@ if ($streamUrl) {
 }
 
 if (!preg_match('/^[a-zA-Z0-9\-]+$/', $mount) || strlen($mount) > 64) {
-    echo json_encode(['error' => 'Invalid mount', 'title' => '']);
+    echo json_encode(['error' => 'Invalid mount', 'title' => '', 'coverart' => null]);
+    exit;
+}
+
+$mediaCP = getMediaCPNowPlaying($mount);
+
+if ($mediaCP) {
+    echo json_encode([
+        'title'     => $mediaCP['title'],
+        'coverart'  => $mediaCP['coverart'],
+        'source'    => 'mediacp',
+        'mount'     => $mount,
+        'timestamp' => time(),
+    ]);
     exit;
 }
 
@@ -31,9 +65,64 @@ $title = getIcyTitle($streamUrl);
 
 echo json_encode([
     'title'     => $title,
+    'coverart'  => null,
+    'source'    => 'icy',
     'mount'     => $mount,
     'timestamp' => time(),
 ]);
+
+// Pull the mount/station name out of a MediaCP-hosted stream URL, e.g.
+// https://media.infinityplay.rs/stream/ZlatnaKruna -> ZlatnaKruna
+function extractMediaCPIdentifier($url)
+{
+    $host = parse_url($url, PHP_URL_HOST);
+    if (!$host || stripos($host, 'infinityplay.rs') === false) {
+        return null;
+    }
+    $path = trim((string) parse_url($url, PHP_URL_PATH), '/');
+    if ($path === '') {
+        return null;
+    }
+    $segments = explode('/', $path);
+    return end($segments) ?: null;
+}
+
+// Query MediaCP's public "now playing" JSON endpoint for a station.
+// Accepts the MediaCP numeric id, slug, or unique_id as $identifier.
+// Returns ['title' => ..., 'coverart' => ...] or null if unavailable.
+function getMediaCPNowPlaying($identifier)
+{
+    if (!defined('MEDIACP_API_URL') || !MEDIACP_API_URL) {
+        return null;
+    }
+
+    $host = parse_url(MEDIACP_API_URL, PHP_URL_HOST);
+    if (!$host) {
+        return null;
+    }
+
+    $endpoint = 'https://' . $host . ':2020/json/stream/' . rawurlencode($identifier);
+
+    $context = stream_context_create([
+        'http' => ['timeout' => 4, 'ignore_errors' => true],
+        'ssl'  => ['verify_peer' => false, 'verify_peer_name' => false],
+    ]);
+
+    $response = @file_get_contents($endpoint, false, $context);
+    if ($response === false) {
+        return null;
+    }
+
+    $data = json_decode($response, true);
+    if (!is_array($data) || empty($data['status']) || empty($data['nowplaying'])) {
+        return null;
+    }
+
+    return [
+        'title'    => $data['nowplaying'],
+        'coverart' => $data['coverart'] ?? null,
+    ];
+}
 
 function getIcyTitle($url)
 {

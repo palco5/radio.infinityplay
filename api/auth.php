@@ -16,6 +16,7 @@ if ($method === 'POST' && $path === 'register') {
     $last_name = $data['last_name'] ?? '';
     $phone_number = $data['phone_number'] ?? '';
     $country_code = $data['country_code'] ?? 'RS';
+    $venue_name = $data['venue_name'] ?? '';
 
     if (empty($email) || empty($password)) {
         sendJSON(['error' => 'Email and password are required'], 400);
@@ -35,22 +36,27 @@ if ($method === 'POST' && $path === 'register') {
     $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
     $username = explode('@', $email)[0];
 
-    $stmt = $db->prepare("
-        INSERT INTO profiles (id, email, password, username, display_name, first_name, last_name, phone_number, country_code, subscription_status, subscription_tier)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'inactive', 'none')
-    ");
+    try {
+        $stmt = $db->prepare("
+            INSERT INTO profiles (id, email, password, username, display_name, first_name, last_name, phone_number, country_code, venue_name, subscription_status, subscription_tier)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inactive', 'none')
+        ");
 
-    $stmt->execute([
-        $userId,
-        $email,
-        $hashedPassword,
-        $username,
-        $username,
-        $first_name,
-        $last_name,
-        $phone_number,
-        $country_code
-    ]);
+        $stmt->execute([
+            $userId,
+            $email,
+            $hashedPassword,
+            $username,
+            $username,
+            $first_name,
+            $last_name,
+            $phone_number,
+            $country_code,
+            $venue_name
+        ]);
+    } catch (PDOException $e) {
+        sendJSON(['error' => 'DB Insert failed: ' . $e->getMessage()], 500);
+    }
 
     // Get created user
     $stmt = $db->prepare("
@@ -142,7 +148,7 @@ if ($method === 'GET' && $path === 'users') {
         SELECT id, email, username, display_name, first_name, last_name, avatar_url,
                is_admin, subscription_tier, subscription_status, business_category,
                created_at, trial_ends_at, newsletter_subscribed, my_radio_stream_url,
-               custom_location, jingle_interval_minutes
+               custom_location, venue_name, jingle_interval_minutes
         FROM profiles
         ORDER BY created_at DESC
     ");

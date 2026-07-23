@@ -22,6 +22,15 @@ export default function Hero() {
       setShowAuthModal(true);
     }
   };
+
+  const handleAuthButton = (tab: 'login' | 'register' = 'register') => {
+    if (user) {
+      navigate('/dashboard');
+    } else {
+      setDefaultTab(tab);
+      setShowAuthModal(true);
+    }
+  };
   const [tabletStations, setTabletStations] = useState<RadioStation[]>([]);
   const [topStations, setTopStations] = useState<RadioStation[]>([]);
   const [_loading, setLoading] = useState(true);
@@ -166,11 +175,11 @@ export default function Hero() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="primary" size="xl" onClick={() => setShowAuthModal(true)} className="shadow-xl w-full sm:w-auto">
+            <Button variant="primary" size="xl" onClick={() => handleAuthButton('register')} className="shadow-xl w-full sm:w-auto">
               <span className="flex items-center justify-center gap-2">Započni Besplatno <Play size={20} fill="currentColor" /></span>
             </Button>
-            <Button variant="outline" size="xl" onClick={scrollToPricing} className="border-2 w-full sm:w-auto">
-              Pretplate
+            <Button variant="outline" size="xl" onClick={() => handleAuthButton('login')} className="border-2 w-full sm:w-auto">
+              <span className="flex items-center justify-center gap-2"><LogIn size={18} /> Uloguj se</span>
             </Button>
           </div>
         </div>
@@ -196,10 +205,10 @@ export default function Hero() {
               </p>
 
               <div className="flex flex-wrap gap-4">
-                <Button variant="primary" size="lg" onClick={() => setShowAuthModal(true)} className="bg-[#84cc16] hover:bg-[#65a30d] text-white border-none rounded-full px-8 py-3 text-lg font-bold shadow-lg shadow-lime-900/20">
+                <Button variant="primary" size="lg" onClick={() => handleAuthButton('login')} className="bg-[#84cc16] hover:bg-[#65a30d] text-white border-none rounded-full px-8 py-3 text-lg font-bold shadow-lg shadow-lime-900/20">
                   <span className="flex items-center gap-2 mr-1"><LogIn size={18} /> Uloguj se</span>
                 </Button>
-                <Button variant="outline" size="lg" onClick={scrollToPricing} className="border border-gray-400 dark:border-white/30 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-white/10 rounded-full px-8 py-3 text-lg">
+                <Button variant="outline" size="lg" onClick={() => handleAuthButton('register')} className="border border-gray-400 dark:border-white/30 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-white/10 rounded-full px-8 py-3 text-lg">
                   <span className="flex items-center gap-2"><Play size={18} /> Započni Besplatno</span>
                 </Button>
               </div>

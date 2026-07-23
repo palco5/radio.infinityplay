@@ -68,13 +68,15 @@ export default function SubscriptionOptionsPage() {
 
     const selectedPlan = pricingPlans.find(p => p.id === selectedPlanId) || pricingPlans[0];
 
+    const trialAlreadyUsed = !!profile?.trial_started_at;
+
     const handleStartTrial = async () => {
-        if (!selectedPlan || !user) return;
+        if (!selectedPlan || !user || trialAlreadyUsed) return;
         setProcessing(true);
         try {
             const updates: any = {
                 subscription_status: 'trial',
-                subscription_tier: 'basic-radio', // Force basic for trial? Or selected? Usually trial is basic. User selects basic to see trial button.
+                subscription_tier: 'basic-radio',
                 trial_started_at: new Date().toISOString(),
                 trial_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                 subscription_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -202,22 +204,29 @@ export default function SubscriptionOptionsPage() {
 
                 {/* Trial Hero Button */}
                 <div className="flex justify-center">
-                    <Button
-                        variant="primary"
-                        size="lg"
-                        className="bg-gradient-to-r from-infinity-green-500 to-emerald-600 hover:from-infinity-green-600 hover:to-emerald-700 transform hover:scale-105 transition-all shadow-lg text-lg px-8 py-4"
-                        onClick={handleStartTrial}
-                        disabled={processing}
-                    >
-                        {processing ? (
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
-                            <>
-                                <Clock className="mr-2" size={24} />
-                                Probaj 7 Dana Besplatno
-                            </>
-                        )}
-                    </Button>
+                    {trialAlreadyUsed ? (
+                        <div className="flex items-center gap-3 px-6 py-4 bg-gray-100 dark:bg-infinity-dark-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-gray-500 dark:text-gray-400 text-sm font-medium">
+                            <AlertCircle size={20} className="flex-shrink-0" />
+                            Probni period je već iskorišćen za ovaj nalog
+                        </div>
+                    ) : (
+                        <Button
+                            variant="primary"
+                            size="lg"
+                            className="bg-gradient-to-r from-infinity-green-500 to-emerald-600 hover:from-infinity-green-600 hover:to-emerald-700 transform hover:scale-105 transition-all shadow-lg text-lg px-8 py-4"
+                            onClick={handleStartTrial}
+                            disabled={processing}
+                        >
+                            {processing ? (
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <>
+                                    <Clock className="mr-2" size={24} />
+                                    Probaj 7 Dana Besplatno
+                                </>
+                            )}
+                        </Button>
+                    )}
                 </div>
 
                 <Card className="p-6 md:p-8">

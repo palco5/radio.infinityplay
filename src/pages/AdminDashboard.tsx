@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { auth as authApi, stations as stationsApi, profiles as profilesApi } from '../lib/api';
+import { auth as authApi, stations as stationsApi, profiles as profilesApi, remote as remoteApi } from '../lib/api';
 import { EVENTS, useEventBus } from '../lib/eventBus';
 import { RadioStation, UserProfile } from '../types';
 import {
@@ -78,6 +78,7 @@ export default function AdminDashboard() {
   const [businessCategories, setBusinessCategories] = useState<any[]>([]);
   const [adminEmail, setAdminEmail] = useState('');
   const [listenerCounts, setListenerCounts] = useState<Record<string, number>>({});
+  const [userSessions, setUserSessions] = useState<Record<string, { station_name: string; station_id: string; is_playing: boolean; device_name: string; device_type: string }>>({});
   const [showRecommendStations, setShowRecommendStations] = useState(false);
   const [showEditUser, setShowEditUser] = useState(false);
   const [showPasswordReset, setShowPasswordReset] = useState(false);
@@ -88,6 +89,9 @@ export default function AdminDashboard() {
   const [showExtendTrial, setShowExtendTrial] = useState(false);
   const [extendTrialUser, setExtendTrialUser] = useState<UserProfile | null>(null);
   const [extendTrialDate, setExtendTrialDate] = useState('');
+  const [totalPlaying, setTotalPlaying] = useState(0);
+  const [totalDevices, setTotalDevices] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     if (user?.email !== 'darkospira@gmail.com') {
@@ -117,37 +121,32 @@ export default function AdminDashboard() {
     setBusinessCategories(mockCategories);
   }, []);
 
-  useEventBus(EVENTS.STATION_UPDATED, () => {
-    fetchDashboardData();
-  });
-
-  useEventBus(EVENTS.USER_PROFILE_UPDATED, () => {
-    fetchDashboardData();
-  });
-
-  useEffect(() => {
-    if (stations.length > 0) {
-      const counts: Record<string, number> = {};
-      stations.forEach(s => {
-        counts[s.id] = s.listener_count || 0;
-      });
-      setListenerCounts(counts);
+  const fetchLiveStats = useCallback(async () => {
+    try {
+      const [liveData, usersData] = await Promise.all([
+        remoteApi.liveStats(),
+        remoteApi.liveUsers(),
+      ]);
+      setListenerCounts(liveData.listener_counts || {});
+      setTotalPlaying(liveData.total_playing || 0);
+      setTotalDevices(liveData.total_devices || 0);
+      setUserSessions(usersData.user_sessions || {});
+      setLastUpdated(new Date());
+    } catch {
+      // silently ignore — not critical
     }
-  }, [stations]);
+  }, []);
 
   const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
-      // Učitaj podatke iz API
-      const allStations = await stationsApi.getAll();
-      const allUsers = await authApi.getAllProfiles() as UserProfile[];
+      const [allStations, allUsers] = await Promise.all([
+        stationsApi.getAll(),
+        authApi.getAllProfiles() as Promise<UserProfile[]>,
+      ]);
 
-      // Filtriraj aktivne pretplate i trial korisnike
       const activeSubscriptions = allUsers.filter(u => u.subscription_status === 'active');
       const trialUsers = allUsers.filter(u => u.trial_ends_at && new Date(u.trial_ends_at) > new Date());
-
-      // Mock payments - u produkciji će biti iz baze
-      const mockPayments: any[] = [];
 
       setStats({
         totalUsers: allUsers.length,
@@ -159,14 +158,29 @@ export default function AdminDashboard() {
 
       setStations(allStations as RadioStation[]);
       setUsers(allUsers);
-      setPayments(mockPayments);
-
+      setPayments([]);
       setLoading(false);
+
+      fetchLiveStats();
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       setLoading(false);
     }
-  }, []);
+  }, [fetchLiveStats]);
+
+  useEventBus(EVENTS.STATION_UPDATED, () => {
+    fetchDashboardData();
+  });
+
+  useEventBus(EVENTS.USER_PROFILE_UPDATED, () => {
+    fetchDashboardData();
+  });
+
+  // Poll live stats every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchLiveStats, 30000);
+    return () => clearInterval(interval);
+  }, [fetchLiveStats]);
 
   // Analytics će biti implementirana nakon produkcije
   useEffect(() => {
@@ -359,6 +373,18 @@ export default function AdminDashboard() {
 
   const renderOverview = () => (
     <div className="space-y-4 md:space-y-6">
+      {/* Live status bar */}
+      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <span>{totalPlaying} aktivnih slušalaca · {totalDevices} uređaja online</span>
+        </div>
+        <span>
+          {lastUpdated
+            ? `Osveženo: ${lastUpdated.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+            : 'Učitavanje...'}
+        </span>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-6">
         <Card>
           <div className="flex items-center justify-between">
@@ -434,7 +460,10 @@ export default function AdminDashboard() {
             Najslušanije Stanice
           </h3>
           <div className="space-y-2 md:space-y-3">
-            {stations.slice(0, 5).map((station, index) => (
+            {[...stations]
+              .sort((a, b) => (listenerCounts[b.id] || 0) - (listenerCounts[a.id] || 0))
+              .slice(0, 5)
+              .map((station, index) => (
               <div key={station.id} className="flex items-center justify-between p-2 md:p-3 bg-gray-50 dark:bg-infinity-dark-700 rounded-xl">
                 <div className="flex items-center space-x-2 md:space-x-3">
                   <div className="w-6 h-6 md:w-8 md:h-8 bg-gradient-infinity rounded-lg flex items-center justify-center text-white font-bold text-xs md:text-sm">
@@ -460,15 +489,52 @@ export default function AdminDashboard() {
         </Card>
 
         <Card>
-          <h3 className="text-lg md:text-xl font-serif font-bold text-gray-900 dark:text-white mb-3 md:mb-4">
-            Nedavne Aktivnosti
-          </h3>
-          <div className="flex flex-col items-center justify-center py-8 md:py-12">
-            <Activity className="text-gray-400 mb-4" size={40} />
-            <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 text-center">
-              Aktivnosti će biti prikazane nakon produkcijskog deploy-a
-            </p>
+          <div className="flex items-center justify-between mb-3 md:mb-4">
+            <h3 className="text-lg md:text-xl font-serif font-bold text-gray-900 dark:text-white">
+              Live Aktivnost
+            </h3>
+            <button
+              onClick={fetchLiveStats}
+              className="text-xs text-infinity-green-600 dark:text-infinity-green-400 hover:underline flex items-center gap-1"
+            >
+              <Activity size={12} />
+              Osveži
+            </button>
           </div>
+          {totalDevices === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 md:py-12">
+              <Activity className="text-gray-400 mb-4" size={40} />
+              <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
+                Nema aktivnih uređaja trenutno
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl text-center">
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{totalPlaying}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Slušaju sada</p>
+                </div>
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-center">
+                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalDevices}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Uređaja online</p>
+                </div>
+              </div>
+              {Object.entries(listenerCounts).filter(([, c]) => c > 0).map(([stationId, count]) => {
+                const st = stations.find(s => s.id === stationId);
+                if (!st) return null;
+                return (
+                  <div key={stationId} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-gray-700 dark:text-gray-300">{st.name}</span>
+                    </div>
+                    <span className="font-bold text-gray-900 dark:text-white">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
       </div>
     </div>
@@ -477,9 +543,15 @@ export default function AdminDashboard() {
   const renderStations = () => (
     <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h2 className="text-xl md:text-2xl font-serif font-bold text-gray-900 dark:text-white">
-          Upravljanje Stanicama
-        </h2>
+        <div>
+          <h2 className="text-xl md:text-2xl font-serif font-bold text-gray-900 dark:text-white">
+            Upravljanje Stanicama
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block"></span>
+            {totalPlaying} slušalaca live · osvežava se automatski
+          </p>
+        </div>
         <Button variant="primary" onClick={() => setShowAddStation(true)} size="sm" className="w-full sm:w-auto">
           <Plus size={18} className="mr-2" />
           Nova Stanica
@@ -694,6 +766,7 @@ export default function AdminDashboard() {
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700">
                 <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Korisnik</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Sluša</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Kategorija</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Plan</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Status</th>
@@ -709,10 +782,27 @@ export default function AdminDashboard() {
                       <div className="flex items-center space-x-2">
                         {user.avatar_url && <span className="text-xl">{user.avatar_url}</span>}
                         <div>
-                          <p className="font-medium text-gray-900 dark:text-white">{user.display_name || 'N/A'}</p>
+                          <p className="font-medium text-gray-900 dark:text-white">{user.venue_name || user.display_name || 'N/A'}</p>
                           <p className="text-xs text-gray-600 dark:text-gray-400">{user.email}</p>
                         </div>
                       </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {(() => {
+                        const session = userSessions[user.id];
+                        if (!session) return <span className="text-xs text-gray-400">—</span>;
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            {session.is_playing
+                              ? <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                              : <span className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" />
+                            }
+                            <span className={`text-xs font-medium ${session.is_playing ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                              {session.station_name}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
                       {category ? `${category.icon} ${category.display_name_sr}` : 'N/A'}
@@ -785,7 +875,7 @@ export default function AdminDashboard() {
                           <Activity className="text-yellow-600" size={18} />
                         </button>
                         <button
-                          onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/dashboard?adminView=${user.id}&t=${sessionStorage.getItem('auth_token') || ''}`, '_blank')}
+                          onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/dashboard?adminView=${user.id}&t=${localStorage.getItem('auth_token') || ''}`, '_blank')}
                           className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
                           title="Otvori dashboard korisnika"
                         >
@@ -829,7 +919,7 @@ export default function AdminDashboard() {
                     )}
                     <div className="min-w-0">
                       <h3 className="font-bold text-gray-900 dark:text-white truncate">
-                        {user.display_name || 'N/A'}
+                        {user.venue_name || user.display_name || 'N/A'}
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                         {user.email}
@@ -885,6 +975,24 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                {/* Live listening status */}
+                {(() => {
+                  const session = userSessions[user.id];
+                  if (!session) return null;
+                  return (
+                    <div className="flex items-center gap-2 px-2.5 py-2 bg-gray-50 dark:bg-infinity-dark-700/50 rounded-xl border border-gray-100 dark:border-gray-700/50">
+                      {session.is_playing
+                        ? <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                        : <span className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" />
+                      }
+                      <span className="text-[10px] text-gray-400 uppercase tracking-wider">Sluša:</span>
+                      <span className={`text-xs font-medium truncate ${session.is_playing ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {session.station_name}
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 {/* Actions */}
                 <div className="grid grid-cols-3 gap-2">
                   <button
@@ -923,7 +1031,7 @@ export default function AdminDashboard() {
                     <span className="text-[10px] font-medium">Preporuke</span>
                   </button>
                   <button
-                    onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/dashboard?adminView=${user.id}&t=${sessionStorage.getItem('auth_token') || ''}`, '_blank')}
+                    onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/dashboard?adminView=${user.id}&t=${localStorage.getItem('auth_token') || ''}`, '_blank')}
                     className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/10 text-blue-500 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors"
                   >
                     <ExternalLink size={16} />

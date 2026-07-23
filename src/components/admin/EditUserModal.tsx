@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { UserProfile } from '../../types';
 import { profiles } from '../../lib/api';
-import { X, User, MapPin, Radio, Clock } from 'lucide-react';
+import { X, User, MapPin, Radio, Clock, Store } from 'lucide-react';
 import { JingleManagement } from './JingleManagement';
 
 interface EditUserModalProps {
@@ -21,6 +21,7 @@ export default function EditUserModal({ user, onClose, onSuccess }: EditUserModa
 
     const [formData, setFormData] = useState<Partial<UserProfile>>({
         display_name: user.display_name || '',
+        venue_name: user.venue_name || '',
         subscription_status: user.subscription_status,
         subscription_tier: user.subscription_tier,
         custom_location: user.custom_location || '',
@@ -35,6 +36,7 @@ export default function EditUserModal({ user, onClose, onSuccess }: EditUserModa
     useEffect(() => {
         setFormData({
             display_name: user.display_name || '',
+            venue_name: user.venue_name || '',
             subscription_status: user.subscription_status,
             subscription_tier: user.subscription_tier,
             custom_location: user.custom_location || '',
@@ -52,12 +54,18 @@ export default function EditUserModal({ user, onClose, onSuccess }: EditUserModa
 
         const updates: Partial<UserProfile> = {
             display_name: formData.display_name,
+            venue_name: formData.venue_name,
             subscription_status: formData.subscription_status as any,
             subscription_tier: formData.subscription_tier as any,
             custom_location: formData.custom_location,
             jingle_interval_minutes: Number(formData.jingle_interval_minutes),
             my_radio_stream_url: formData.my_radio_stream_url ?? '',
-            trial_ends_at: formData.trial_ends_at || null,
+            trial_ends_at: formData.subscription_status === 'trial' ? (formData.trial_ends_at || null) : null,
+            subscription_ends_at: formData.subscription_status === 'active'
+                ? null
+                : formData.subscription_status === 'trial'
+                    ? (formData.trial_ends_at || null)
+                    : null,
         };
 
         try {
@@ -152,6 +160,22 @@ export default function EditUserModal({ user, onClose, onSuccess }: EditUserModa
                                 />
                             </div>
                         )}
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Naziv Lokala
+                            </label>
+                            <div className="relative">
+                                <Store className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                                <input
+                                    type="text"
+                                    value={formData.venue_name || ''}
+                                    onChange={(e) => setFormData({ ...formData, venue_name: e.target.value })}
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-infinity-green-500 outline-none"
+                                    placeholder="npr. Kafić Sunce, Restoran Stari Grad..."
+                                />
+                            </div>
+                        </div>
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

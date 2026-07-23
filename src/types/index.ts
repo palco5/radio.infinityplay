@@ -65,6 +65,7 @@ export interface UserProfile {
   email_notifications: boolean;
   business_category: string;
   custom_location?: string;
+  venue_name?: string;
   jingle_url?: string;
   jingle_interval_minutes: number;
   my_radio_stream_url?: string;

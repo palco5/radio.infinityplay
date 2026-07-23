@@ -6,7 +6,22 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    overflow-x: hidden;
+    overscroll-behavior: none;
+    background-color: white;
+    /* Blokira pinch-to-zoom i auto-zoom pri otvaranju tastature */
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  html.dark {
+    background-color: #0F172A;
+  }
+
   body {
+    overflow-x: hidden;
     @apply font-sans antialiased;
   }
 
@@ -38,4 +53,10 @@
 @keyframes sound-ring {
   0%   { transform: scale(1);    opacity: 1; }
   100% { transform: scale(1.75); opacity: 0; }
+}
+
+@keyframes dj-glow {
+  0%   { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.65); }
+  60%  { box-shadow: 0 0 0 10px rgba(139, 92, 246, 0.1); }
+  100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
 }

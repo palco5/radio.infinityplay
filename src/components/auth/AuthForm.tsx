@@ -22,6 +22,7 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
     const [lastName, setLastName] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [countryCode, setCountryCode] = useState('+381');
+    const [venueName, setVenueName] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -77,13 +78,19 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
                     return;
                 }
 
+                if (!venueName.trim()) {
+                    setError('Naziv lokala je obavezno polje');
+                    setLoading(false);
+                    return;
+                }
+
                 if (!agreedToTerms) {
                     setError('Morate prihvatiti Uslove korišćenja i Politiku privatnosti');
                     setLoading(false);
                     return;
                 }
 
-                await signUp(email, password, firstName, lastName, phoneNumber, countryCode);
+                await signUp(email, password, firstName, lastName, phoneNumber, countryCode, venueName);
                 setSuccess('Registracija uspešna!');
 
                 setTimeout(() => {
@@ -116,22 +123,22 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
         <div className="w-full">
             <form onSubmit={handleSubmit} className="space-y-4">
                 {error && (
-                    <div className="flex items-center space-x-2 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl">
-                        <AlertCircle className="text-red-600" size={20} />
-                        <span className="text-red-700 dark:text-red-400 font-roboto">{error}</span>
+                    <div className="flex items-start space-x-2 p-3 sm:p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl">
+                        <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                        <span className="text-red-700 dark:text-red-400 font-roboto text-sm">{error}</span>
                     </div>
                 )}
 
                 {success && (
-                    <div className="flex items-center space-x-2 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl">
-                        <CheckCircle className="text-green-600" size={20} />
-                        <span className="text-green-700 dark:text-green-400 font-roboto">{success}</span>
+                    <div className="flex items-start space-x-2 p-3 sm:p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl">
+                        <CheckCircle className="text-green-600 flex-shrink-0 mt-0.5" size={20} />
+                        <span className="text-green-700 dark:text-green-400 font-roboto text-sm">{success}</span>
                     </div>
                 )}
 
                 {!isLogin && (
                     <>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <Input
                                 label="Ime *"
                                 type="text"
@@ -150,16 +157,25 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
                             />
                         </div>
 
+                        <Input
+                            label="Naziv Lokala *"
+                            type="text"
+                            value={venueName}
+                            onChange={(e) => setVenueName(e.target.value)}
+                            placeholder="npr. Kafić Sunce, Restoran Stari Grad..."
+                            required
+                        />
+
                         <div>
                             <label className="block text-sm font-roboto font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Broj Telefona *
                             </label>
-                            <div className="flex space-x-2">
-                                <div className="relative w-32">
+                            <div className="flex gap-2">
+                                <div className="relative w-28 sm:w-32 flex-shrink-0">
                                     <select
                                         value={countryCode}
                                         onChange={(e) => setCountryCode(e.target.value)}
-                                        className="w-full pl-3 pr-2 py-3 border-2 border-gray-300 dark:border-infinity-dark-700 rounded-infinity bg-white dark:bg-infinity-dark-900 text-gray-900 dark:text-white focus:border-infinity-green-500 focus:ring-2 focus:ring-infinity-green-200 outline-none appearance-none cursor-pointer text-sm transition-all"
+                                        className="w-full pl-2 sm:pl-3 pr-1 py-3 border-2 border-gray-300 dark:border-infinity-dark-700 rounded-infinity bg-white dark:bg-infinity-dark-900 text-gray-900 dark:text-white focus:border-infinity-green-500 focus:ring-2 focus:ring-infinity-green-200 outline-none appearance-none cursor-pointer text-sm transition-all"
                                         required
                                     >
                                         {countries.map((country) => (
@@ -169,7 +185,7 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
                                         ))}
                                     </select>
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 min-w-0">
                                     <Input
                                         type="tel"
                                         value={phoneNumber}
@@ -261,14 +277,14 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
             <div className="mt-6 text-center">
                 <button
                     onClick={toggleMode}
-                    className="text-infinity-green-600 hover:text-infinity-green-700 font-medium font-roboto"
+                    className="text-infinity-green-600 hover:text-infinity-green-700 font-medium font-roboto text-sm sm:text-base"
                 >
                     {isLogin ? 'Nemate nalog? Registrujte se' : 'Već imate nalog? Prijavite se'}
                 </button>
             </div>
 
             {!isLogin && (
-                <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl">
+                <div className="mt-4 p-3 sm:p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl">
                     <p className="text-sm text-gray-600 dark:text-gray-400 font-roboto">
                         Nakon registracije, primićete email za verifikaciju. Molimo proverite vaš inbox i kliknite na link za aktivaciju naloga.
                     </p>

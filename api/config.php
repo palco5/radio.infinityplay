@@ -12,6 +12,10 @@ define('JWT_SECRET', '0c198658aed246fb823265e362d324fbc55236d14f35e240f689b1575c
 // CORS Settings
 define('CORS_ORIGIN', 'https://radio.infinityplay.rs');
 
+// MediaCP API (Now Playing / cover art integration)
+define('MEDIACP_API_URL', 'https://media.infinityplay.rs/'); // e.g. https://cp.infinityplay.rs
+define('MEDIACP_API_KEY', 'hZ2GeXzUiMudWMRYsHyopFensXZpnFuKnZ-IVsmrV9CZ1nrLpXiEmw=='); // paste the key value here directly, not in chat
+
 // Error reporting for debugging (disable in production)
 ini_set('display_errors', 0);
 error_reporting(E_ALL);

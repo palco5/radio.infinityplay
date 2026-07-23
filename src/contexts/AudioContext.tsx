@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useRef, ReactNode, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { RadioStation, UserJingle } from '../types';
 import { useAuth } from './AuthContext';
 import { profiles as profilesApi, nowplaying as nowplayingApi } from '../lib/api';
@@ -8,11 +9,16 @@ interface AudioContextType {
   currentStation: RadioStation | null;
   isPlaying: boolean;
   volume: number;
+  nowPlayingTitle: string;
+  nowPlayingCover: string | null;
   playStation: (station: RadioStation) => void;
   pause: () => void;
   setVolume: (volume: number) => void;
   playJingle: (url: string, volumeBoostDb?: number) => Promise<void>;
   updateJingles: (jingles: UserJingle[]) => void;
+  fadeRadioTo: (volume: number, duration?: number) => void;
+  setSongTransitionCallback: (cb: (() => void) | null) => void;
+  setSongActive: (active: boolean) => void;
 }
 
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
@@ -22,6 +28,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [currentStation, setCurrentStation] = useState<RadioStation | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolumeState] = useState(0.7);
+  const [nowPlayingTitle, setNowPlayingTitle] = useState('');
+  const [nowPlayingCover, setNowPlayingCover] = useState<string | null>(null);
 
   // Mirror volume state in a ref so async callbacks always read the live value
   const volumeRef = useRef(0.7);
@@ -60,6 +68,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // Lets async jingle playback detect it has become stale.
   const playGenRef = useRef<number>(0);
 
+  // Song player callback — fires on ICY song transition, used by SongPlayerContext
+  const songTransitionCallbackRef = useRef<(() => void) | null>(null);
+
+  // Whether a YouTube song is currently active (used to suppress jingle firing during song)
+  const isSongActiveRef = useRef(false);
+  // Ref to fireReadyJingle so setSongActive can call it stably
+  const fireReadyJingleRef = useRef<((jingle: import('../types').UserJingle) => void) | null>(null);
+  // Ref to pollCurrentTitle — updated each render so timeupdate handler always calls latest closure
+  const pollCurrentTitleRef = useRef<() => Promise<void>>(async () => {});
+  // Throttle timestamp for timeupdate-driven ICY polling
+  const icyPollThrottleRef = useRef(0);
+
   useEffect(() => {
     if (user) {
       userIdRef.current = user.id;
@@ -78,7 +98,21 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     audioRef1.current.volume = volumeRef.current;
     audioRef2.current.volume = volumeRef.current;
 
+    // Audio timeupdate events fire even in background tabs (media is exempt from throttling).
+    // Use them to drive ICY polling so queued songs and jingles trigger on time in background.
+    const handleIcyPoll = () => {
+      if (!songTransitionCallbackRef.current && !jingleReadyRef.current) return;
+      const now = Date.now();
+      if (now - icyPollThrottleRef.current < 3000) return;
+      icyPollThrottleRef.current = now;
+      pollCurrentTitleRef.current();
+    };
+    audioRef1.current.addEventListener('timeupdate', handleIcyPoll);
+    audioRef2.current.addEventListener('timeupdate', handleIcyPoll);
+
     return () => {
+      audioRef1.current?.removeEventListener('timeupdate', handleIcyPoll);
+      audioRef2.current?.removeEventListener('timeupdate', handleIcyPoll);
       if (audioRef1.current) { audioRef1.current.pause(); audioRef1.current.src = ''; }
       if (audioRef2.current) { audioRef2.current.pause(); audioRef2.current.src = ''; }
       if (jingleCheckIntervalRef.current) clearInterval(jingleCheckIntervalRef.current);
@@ -94,6 +128,27 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     } else {
       updateListeningTime();
     }
+  }, [isPlaying, currentStation]);
+
+  // Poll now-playing title + cover art for display purposes (independent of jingle scheduling).
+  useEffect(() => {
+    if (!isPlaying || !currentStation) {
+      setNowPlayingTitle('');
+      setNowPlayingCover(null);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchInfo = async () => {
+      const info = await nowplayingApi.getInfo(currentStation.stream_url);
+      if (cancelled) return;
+      setNowPlayingTitle(info.title);
+      setNowPlayingCover(info.coverart);
+    };
+
+    fetchInfo();
+    const id = setInterval(fetchInfo, 15000);
+    return () => { cancelled = true; clearInterval(id); };
   }, [isPlaying, currentStation]);
 
   const updateListeningTime = async () => {
@@ -189,6 +244,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (!isPlayingRef.current || !jingleManagerRef.current) return;
     if (currentStationIdRef.current?.startsWith('moj-radio-')) return;
     if (jingleReadyRef.current) return; // Already waiting for next transition
+    if (isSongActiveRef.current) return; // Never fire jingles while YouTube song is playing
 
     const jingle = jingleManagerRef.current.shouldPlayJingle();
     if (!jingle) return;
@@ -238,7 +294,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
     // Timeout fallback: if jingle was ready for > 3 min without a detected transition, play it now
     if (jingleReadyRef.current && jingleReadyAtRef.current &&
-        (Date.now() - jingleReadyAtRef.current) > 180_000) {
+        (Date.now() - jingleReadyAtRef.current) > 180_000 && !isSongActiveRef.current) {
       fireReadyJingle(jingleReadyRef.current);
       return;
     }
@@ -248,11 +304,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (!title) return;
 
     if (songTitleRef.current && title !== songTitleRef.current) {
-      if (jingleReadyRef.current) {
-        // Jingle was waiting for exactly this transition — fire it now
-        fireReadyJingle(jingleReadyRef.current);
-      } else {
+      // Song player queued callback takes priority over jingles
+      const transitionCb = songTransitionCallbackRef.current;
+      if (transitionCb) {
+        songTransitionCallbackRef.current = null;
+        transitionCb();
+      } else if (jingleReadyRef.current) {
+        // Jingle was waiting for this transition — only fire if no YouTube song active
+        if (!isSongActiveRef.current) {
+          fireReadyJingle(jingleReadyRef.current);
+        }
+        // If song is active, keep jingleReadyRef pending — will fire when song ends
+      } else if (!isSongActiveRef.current) {
         // No jingle pending — count the song and check if threshold is now reached
+        // Skip counting ICY changes during YouTube playback (they're not "real" radio songs)
         jingleManagerRef.current?.notifySongChange();
         checkForJingle();
       }
@@ -288,25 +353,32 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const nextDeck    = activeDeckRef.current === 1 ? audioRef2.current : audioRef1.current;
     if (!currentDeck || !nextDeck) return;
 
+    // Crossfade only when switching from an already-playing station; fresh start = instant volume
+    const isCrossfade = !!(currentDeck.src && currentDeck.src !== window.location.href && !currentDeck.paused);
+
     // Hard-stop nextDeck in case it's mid-crossfade
     nextDeck.pause();
-    nextDeck.volume = 0;
+    nextDeck.volume = isCrossfade ? 0 : targetVolume;
     nextDeck.src = station.stream_url;
+
+    // flushSync forces React to synchronously paint the player bar before play() is called.
+    // Without this, React batches the state update and the player can appear 1+ seconds late on mobile.
+    flushSync(() => {
+      setCurrentStation(station);
+      setIsPlaying(true);
+    });
+    isPlayingRef.current = true;
 
     try {
       await nextDeck.play();
 
       if (gen !== playGenRef.current) { nextDeck.pause(); return; }
 
-      setCurrentStation(station);
-      setIsPlaying(true);
-      isPlayingRef.current = true;
-
-      // Flip active deck IMMEDIATELY so subsequent calls read the correct deck
+      // Flip active deck after successful play
       activeDeckRef.current = activeDeckRef.current === 1 ? 2 : 1;
 
-      // Fade out old deck (fire-and-forget)
-      if (currentDeck.src && currentDeck.src !== window.location.href && !currentDeck.paused) {
+      // Fade out old deck (fire-and-forget) or just stop it
+      if (isCrossfade) {
         fadeOut(currentDeck, 1500).then(() => { currentDeck.pause(); currentDeck.src = ''; });
       } else {
         currentDeck.pause();
@@ -321,10 +393,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       songPollIntervalRef.current = setInterval(pollCurrentTitle, 30000);
       pollCurrentTitle(); // Fetch initial title immediately
 
-      await fadeIn(nextDeck, targetVolume, 1500);
+      if (isCrossfade) await fadeIn(nextDeck, targetVolume, 1500);
       if (!currentDeck.paused) currentDeck.pause();
 
     } catch (error) {
+      // Rollback UI state if play() fails
+      setIsPlaying(false);
+      isPlayingRef.current = false;
+      setCurrentStation(null);
       console.error('Greška pri reprodukciji:', error);
     }
   };
@@ -373,7 +449,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
       if (jingleGen !== playGenRef.current || !isPlayingRef.current) {
         jingleAudio.pause(); jingleAudio.src = ''; jingleAudioRef.current = null;
-        fadeTo(radioDeck, radioVolume, 600);
+        // Don't restore radio if a YouTube song took over — it handles its own crossfade
+        if (!isSongActiveRef.current) fadeTo(radioDeck, radioVolume, 600);
         return;
       }
 
@@ -385,7 +462,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
       if (jingleGen !== playGenRef.current || !isPlayingRef.current) {
         jingleAudio.pause(); jingleAudio.src = ''; jingleAudioRef.current = null;
-        fadeTo(radioDeck, radioVolume, 600);
+        if (!isSongActiveRef.current) fadeTo(radioDeck, radioVolume, 600);
         return;
       }
 
@@ -402,8 +479,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('❌ Jingle error:', error);
       jingleAudioRef.current = null;
-      // Restore radio volume on failure
-      if (isPlayingRef.current) {
+      if (isPlayingRef.current && !isSongActiveRef.current) {
         fadeTo(radioDeck, volumeRef.current, 600);
       }
     }
@@ -448,13 +524,71 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const v = Math.max(0, Math.min(1, newVolume));
     volumeRef.current = v;
     setVolumeState(v);
-    if (audioRef1.current) audioRef1.current.volume = v;
-    if (audioRef2.current) audioRef2.current.volume = v;
+    // Don't restore radio volume while a song is active — radio is at 0 from crossfade.
+    // SongPlayerContext's useEffect will update the YouTube player instead.
+    if (!isSongActiveRef.current) {
+      if (audioRef1.current) audioRef1.current.volume = v;
+      if (audioRef2.current) audioRef2.current.volume = v;
+    }
+  };
+
+  // Fade the active radio deck to any volume — used by SongPlayerContext for crossfade
+  const fadeRadioTo = (targetVolume: number, duration: number = 1500) => {
+    const deck = activeDeckRef.current === 1 ? audioRef1.current : audioRef2.current;
+    if (deck) fadeTo(deck, Math.max(0, Math.min(1, targetVolume)), duration);
+  };
+
+  // Keep refs current so callbacks and timeupdate handler always call the latest closures
+  fireReadyJingleRef.current = fireReadyJingle;
+  pollCurrentTitleRef.current = pollCurrentTitle;
+
+  // Called by SongPlayerContext when YouTube song starts or ends
+  const setSongActive = (active: boolean) => {
+    isSongActiveRef.current = active;
+    if (active) {
+      // Kill any jingle that's currently playing or preloaded.
+      // Increment playGenRef so any in-flight playJingle async fn detects the abort
+      // and skips the radio-volume-restore (since isSongActiveRef is now true).
+      playGenRef.current++;
+      if (jingleAudioRef.current) {
+        jingleAudioRef.current.pause();
+        jingleAudioRef.current.src = '';
+        jingleAudioRef.current = null;
+      }
+      if (jinglePreloadRef.current) {
+        jinglePreloadRef.current.src = '';
+        jinglePreloadRef.current = null;
+      }
+    } else if (isPlayingRef.current && jingleReadyRef.current) {
+      // Song ended and a jingle was waiting — fire it after radio crossfade completes
+      const jingle = jingleReadyRef.current;
+      const gen = playGenRef.current;
+      setTimeout(() => {
+        if (playGenRef.current === gen && isPlayingRef.current && jingleReadyRef.current === jingle) {
+          fireReadyJingleRef.current?.(jingle);
+        }
+      }, 2800);
+    }
+  };
+
+  // Register/clear a callback that fires once on the next ICY song transition
+  const setSongTransitionCallback = (cb: (() => void) | null) => {
+    songTransitionCallbackRef.current = cb;
+    if (cb && isPlayingRef.current) {
+      // Speed up ICY polling to 3s so we catch song changes quickly
+      if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
+      songPollIntervalRef.current = setInterval(pollCurrentTitle, 3000);
+      pollCurrentTitle();
+    } else if (!cb && isPlayingRef.current) {
+      // Restore normal 30s interval
+      if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
+      songPollIntervalRef.current = setInterval(pollCurrentTitle, 30000);
+    }
   };
 
   return (
     <AudioContext.Provider
-      value={{ currentStation, isPlaying, volume, playStation, pause, setVolume, playJingle, updateJingles }}
+      value={{ currentStation, isPlaying, volume, nowPlayingTitle, nowPlayingCover, playStation, pause, setVolume, playJingle, updateJingles, fadeRadioTo, setSongTransitionCallback, setSongActive }}
     >
       {children}
     </AudioContext.Provider>

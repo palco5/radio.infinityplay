@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { profiles as profilesApi } from '../../lib/api';
 import Card from '../ui/Card';
 
 export default function TrialStatus() {
@@ -48,9 +47,8 @@ export default function TrialStatus() {
         const diff = end - now;
 
         if (diff <= 0) {
-            setTimeRemaining('Probni period je istekao');
+            // Trial expired — hide this component; UserDashboard handles the expired screen
             setIsTrialActive(false);
-            handleTrialExpired();
             return;
         }
 
@@ -60,27 +58,6 @@ export default function TrialStatus() {
         const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
         setTimeRemaining(`${days}d ${hours}h ${minutes}m ${seconds}s`);
-    };
-
-    const handleTrialExpired = async () => {
-        if (!user || !profile) return;
-
-        // Trial expired - update status to 'expired' and revoke access
-        try {
-            await profilesApi.update(user.id, {
-                subscription_status: 'expired',
-                subscription_tier: 'free', // Optional, helps with logic fallback
-                trial_ends_at: null,
-                cancel_at_period_end: false,
-            });
-
-            alert('Vaš probni period je istekao. Kontaktirajte administratora za nastavak ili proverite opcije pretplate.');
-            window.location.reload();
-        } catch (error) {
-            console.error('Error expiring trial:', error);
-            // Even if API fails, reload so the frontend redirect logic kicks in (if relying on date)
-            window.location.reload();
-        }
     };
 
     if (!isTrialActive) return null;

@@ -8,6 +8,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+      },
       includeAssets: ['logo.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'InfinityPlay Dashboard',

@@ -35,7 +35,7 @@ if ($method === 'GET') {
         SELECT id, email, username, display_name, first_name, last_name, avatar_url,
                bio, phone_number, country_code, subscription_tier, subscription_status,
                theme_preference, email_notifications, newsletter_subscribed, business_category,
-               custom_location, jingle_url, jingle_interval_minutes, my_radio_stream_url, is_admin, created_at,
+               custom_location, venue_name, jingle_url, jingle_interval_minutes, my_radio_stream_url, is_admin, created_at,
                onboarding_completed, total_listening_minutes, trial_started_at, trial_ends_at, subscription_ends_at, confetti_shown
         FROM profiles WHERE id = ?
     ");
@@ -80,6 +80,7 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
         'bio',
         'business_category',
         'custom_location',
+        'venue_name',
         'theme_preference',
         'email_notifications',
         'newsletter_subscribed',
@@ -104,13 +105,18 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
         ];
         $allowedFields = array_merge($allowedFields, $adminFields);
     } else {
-        // Permit users to manage trial status with strict constraints
+        // Permit users to activate trial only once — never if trial_started_at is already set
         if (isset($data['subscription_status']) && $data['subscription_status'] === 'trial') {
-            // Check if they already had a trial (optional, but good for security)
-            // For now, let's just enforce basic constraints
-            $data['subscription_tier'] = 'basic-radio'; // Force basic for trial
+            $stmt2 = $db->prepare("SELECT trial_started_at FROM profiles WHERE id = ?");
+            $stmt2->execute([$userId]);
+            $existingProfile = $stmt2->fetch();
 
-            // Limit trial to 7 days from now regardless of what they sent
+            if ($existingProfile && !empty($existingProfile['trial_started_at'])) {
+                sendJSON(['error' => 'Trial period has already been used for this account'], 403);
+            }
+
+            $data['subscription_tier'] = 'basic-radio';
+
             $trialEndDate = new DateTime();
             $trialEndDate->modify('+7 days');
             $data['trial_ends_at'] = $trialEndDate->format('Y-m-d H:i:s');
@@ -126,12 +132,12 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
     }
 
     foreach ($allowedFields as $field) {
-        if (isset($data[$field])) {
+        if (array_key_exists($field, $data)) {
             $updates[] = "$field = ?";
             if ($field === 'recommended_stations') {
-                $values[] = json_encode($data[$field]);
-            } elseif ($field === 'is_admin' || $field === 'newsletter_subscribed' || $field === 'email_notifications' || $field === 'onboarding_completed') {
-                $values[] = (int) $data[$field];
+                $values[] = $data[$field] !== null ? json_encode($data[$field]) : null;
+            } elseif (in_array($field, ['is_admin', 'newsletter_subscribed', 'email_notifications', 'onboarding_completed', 'confetti_shown'])) {
+                $values[] = $data[$field] !== null ? (int) $data[$field] : null;
             } else {
                 $values[] = $data[$field];
             }
@@ -157,7 +163,7 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
         SELECT id, email, username, display_name, first_name, last_name, avatar_url,
                bio, phone_number, country_code, subscription_tier, subscription_status,
                theme_preference, email_notifications, newsletter_subscribed, business_category,
-               custom_location, jingle_url, jingle_interval_minutes, my_radio_stream_url, is_admin, created_at,
+               custom_location, venue_name, jingle_url, jingle_interval_minutes, my_radio_stream_url, is_admin, created_at,
                trial_ends_at, recommended_stations, onboarding_completed
         FROM profiles WHERE id = ?
     ");
@@ -169,6 +175,37 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
     }
 
     sendJSON(['profile' => $profile]);
+}
+
+// Delete profile (Admin only)
+if ($method === 'DELETE') {
+    $isAdminEmail = in_array($currentUser['email'], ['darkospira@gmail.com', 'info@infinityplay.rs']);
+    if (!$isAdminEmail) {
+        $db = getDB();
+        $stmt = $db->prepare("SELECT is_admin FROM profiles WHERE id = ?");
+        $stmt->execute([$currentUser['userId']]);
+        $admin = $stmt->fetch();
+        if (!$admin || !$admin['is_admin']) {
+            sendJSON(['error' => 'Forbidden'], 403);
+        }
+    }
+
+    // Prevent deleting yourself
+    if ($currentUser['userId'] === $userId) {
+        sendJSON(['error' => 'Cannot delete your own account'], 400);
+    }
+
+    $db = getDB();
+    try {
+        $stmt = $db->prepare("DELETE FROM profiles WHERE id = ?");
+        $stmt->execute([$userId]);
+        if ($stmt->rowCount() === 0) {
+            sendJSON(['error' => 'User not found'], 404);
+        }
+        sendJSON(['success' => true]);
+    } catch (PDOException $e) {
+        sendJSON(['error' => 'Database error: ' . $e->getMessage()], 500);
+    }
 }
 
 sendJSON(['error' => 'Method not allowed'], 405);

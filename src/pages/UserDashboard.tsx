@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -6,10 +6,14 @@ import { useAudio } from '../contexts/AudioContext';
 import { stations as stationsApi, profiles as profilesApi, jingles as jinglesApi } from '../lib/api';
 import { useEventBus, EVENTS } from '../lib/eventBus';
 import { RadioStation, UserProfile } from '../types';
+import { useRemoteSession, RemoteDevice } from '../hooks/useRemoteSession';
+import RemoteControlPanel from '../components/dashboard/RemoteControlPanel';
+import SongMiniPlayer from '../components/dashboard/SongMiniPlayer';
+import DJManagerOverlay from '../components/dashboard/DJManagerOverlay';
+import { useSongPlayer } from '../contexts/SongPlayerContext';
 
 import confetti from 'canvas-confetti';
 import {
-  Search,
   Play,
   Filter,
   User,
@@ -19,7 +23,9 @@ import {
   Moon,
   Sun,
   Music,
-  Clock
+  Clock,
+  Search,
+  X,
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -54,6 +60,145 @@ export default function UserDashboard() {
   const [isTrialExpired, setIsTrialExpired] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [adminViewProfile, setAdminViewProfile] = useState<UserProfile | null>(null);
+  const [remoteSessions, setRemoteSessions] = useState<RemoteDevice[]>([]);
+  const [myDeviceId, setMyDeviceId] = useState<string>('');
+  const [clickedStationId, setClickedStationId] = useState<string | null>(null);
+  const [pendingStation, setPendingStation] = useState<RadioStation | null>(null);
+  const [isDJOpen, setIsDJOpen] = useState(false);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const djButtonRef = useRef<HTMLButtonElement>(null);
+
+  const { songState, currentSong, stopSong, skipSong, setQueuedAction, pauseSong, resumeSong, playSong, queueSong, songQueue, postRadioQueue, savedPlaylist, saveCurrentQueueAs, clearSavedPlaylist, scheduleSwitch, resumeSavedPlaylist } = useSongPlayer();
+
+  // Aktivan profil mora biti definisan pre remoteStations
+  const activeProfile = adminViewUserId ? (adminViewProfile ?? null) : profile;
+  const adminViewLoading = !!adminViewUserId && adminViewProfile === null;
+
+  // Stations list for remote control (includes Moj Radio if available)
+  const remoteStations = [
+    ...(activeProfile?.my_radio_stream_url
+      ? [{
+          id: `moj-radio-${user?.id}`,
+          name: 'Moj Radio',
+          description: 'Personalni radio stream',
+          genre: 'Personalni',
+          logo_url: null,
+          stream_url: activeProfile.my_radio_stream_url,
+          medicp_id: null,
+          bitrate: 128,
+          is_featured: true,
+          is_active: true,
+          listener_count: 0,
+          icon_url: null,
+          icon_emoji: '📻',
+          background_url: null,
+          background_color: null,
+          background_type: 'gradient' as const,
+          grid_row: null,
+          grid_column: null,
+          grid_page: 1,
+          recommended_for: [],
+          created_at: '',
+          updated_at: '',
+        } as RadioStation]
+      : []),
+    ...stations,
+  ];
+
+  const { sendCommand: sendRemoteCommand, deviceType: myDeviceType } = useRemoteSession({
+    enabled: !adminViewUserId && !!user,
+    currentStation,
+    isPlaying,
+    songState,
+    currentSong,
+    songQueue,
+    postRadioQueue,
+    savedPlaylistCount: savedPlaylist.length,
+    onPlayStation: (station) => {
+      // Remote triggered immediate station switch — save playlist if song was active
+      if (songState !== 'idle' && songState !== 'queued') {
+        const all = currentSong ? [currentSong, ...songQueue] : [...songQueue];
+        if (all.length > 0) saveCurrentQueueAs(all);
+        stopSong();
+        setTimeout(() => playStation(station), 1400);
+      } else {
+        playStation(station);
+      }
+    },
+    onPause: pause,
+    onResume: () => { if (currentStation) playStation(currentStation); },
+    onSongPause: pauseSong,
+    onSongResume: resumeSong,
+    onSongStop: stopSong,
+    onSongSkip: skipSong,
+    onSongPlay: (song, immediate) => { if (immediate) playSong(song); else queueSong(song); },
+    onScheduleSwitch: (keepInQueue, station) => scheduleSwitch(keepInQueue, () => playStation(station)),
+    onResumeSaved: (immediate) => resumeSavedPlaylist(immediate),
+    allStations: remoteStations,
+    onSessionsChange: (sessions, deviceId) => {
+      setRemoteSessions(sessions);
+      setMyDeviceId(deviceId);
+    },
+  });
+
+  // Sve funkcije koje se koriste u hookovima moraju biti definisane pre early returns
+  const fetchStations = useCallback(async () => {
+    try {
+      const data = await stationsApi.getAll();
+      const activeStations = data
+        .filter((s: RadioStation) => s.is_active)
+        .sort((a: RadioStation, b: RadioStation) => a.name.localeCompare(b.name));
+      setStations(activeStations);
+      setFilteredStations(activeStations);
+    } catch (error) {
+      console.error('Failed to fetch stations:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const filterStations = useCallback(() => {
+    let filtered = [...stations];
+    if (searchQuery) {
+      filtered = filtered.filter(station =>
+        station.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        station.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    if (selectedGenre !== 'all') {
+      filtered = filtered.filter(station => station.genre === selectedGenre);
+    }
+    setFilteredStations(filtered);
+  }, [stations, searchQuery, selectedGenre]);
+
+  const checkAndShowConfetti = useCallback(async () => {
+    if (!user || !profile) return;
+    if (profile.subscription_tier && profile.subscription_tier !== 'free' && !profile.confetti_shown) {
+      setTimeout(() => {
+        const duration = 3000;
+        const animationEnd = Date.now() + duration;
+        const colors = ['#10b981', '#f97316', '#ffffff'];
+        const frame = () => {
+          confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 }, colors });
+          confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 }, colors });
+          if (Date.now() < animationEnd) requestAnimationFrame(frame);
+        };
+        frame();
+      }, 500);
+      profilesApi.update(user.id, { confetti_shown: true });
+    }
+  }, [user, profile]);
+
+  const checkOnboardingStatus = useCallback(() => {
+    if (profile && !profile.onboarding_completed) {
+      setShowOnboarding(true);
+    }
+  }, [profile]);
+
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+    navigate('/');
+  }, [signOut, navigate]);
 
   // Kada admin gleda tuđi dashboard — učitaj taj profil
   useEffect(() => {
@@ -61,10 +206,6 @@ export default function UserDashboard() {
       profilesApi.getById(adminViewUserId).then(setAdminViewProfile).catch(console.error);
     }
   }, [adminViewUserId]);
-
-  // Aktivan profil: admin-pregled ili sopstveni (profile kao fallback dok se učitava)
-  const activeProfile = adminViewUserId ? (adminViewProfile ?? null) : profile;
-  const adminViewLoading = !!adminViewUserId && adminViewProfile === null;
 
   useEffect(() => {
     fetchStations();
@@ -82,12 +223,12 @@ export default function UserDashboard() {
   }, [user, profile, adminViewUserId]);
 
   useEffect(() => {
-    // Wait until auth is NO LONGER loading and we have a profile
     if (!authLoading && profile && !profile.is_admin) {
       const isTrial = profile.subscription_status === 'trial';
       const isActive = profile.subscription_status === 'active';
 
-      // If not active and not trial, redirect to subscription options
+      // Expired trial stays on trial status but with past date — handled by isTrialExpired below
+      // Only redirect if status is neither trial nor active (e.g. cancelled, unpaid)
       if (!isTrial && !isActive) {
         setIsRedirecting(true);
         navigate('/subscription-options', { replace: true });
@@ -95,53 +236,50 @@ export default function UserDashboard() {
     }
   }, [profile, authLoading, navigate]);
 
-  // Self-healing: Fix trial dates if they are incorrectly set to 30 days
+  // Expiration check — runs immediately and then every minute
   useEffect(() => {
-    if (profile && profile.subscription_status === 'trial' && profile.trial_ends_at) {
-      const trialEnd = new Date(profile.trial_ends_at);
-      const now = new Date();
-      const diffDays = (trialEnd.getTime() - now.getTime()) / (1000 * 3600 * 24);
+    if (!profile || profile.is_admin) return;
 
-      // If trial ends in more than 14 days, it's definitely wrong (should be 7)
-      if (diffDays > 14) {
-        console.log('Fixing incorrect trial date...');
-        const newEndDate = new Date();
-        // If we have start date, calculate 7 days from start. Otherwise 7 days from now.
-        if (profile.trial_started_at) {
-          const startDate = new Date(profile.trial_started_at);
-          newEndDate.setTime(startDate.getTime() + (7 * 24 * 60 * 60 * 1000));
-        } else {
-          newEndDate.setDate(newEndDate.getDate() + 7);
-        }
-
-        profilesApi.update(user!.id, {
-          trial_ends_at: newEndDate.toISOString(),
-          subscription_ends_at: newEndDate.toISOString()
-        }).then(() => {
-          window.location.reload(); // Reload to reflect changes
-        }).catch(err => console.error('Failed to fix trial date', err));
+    const checkExpiry = () => {
+      // Trial with expired date
+      if (profile.subscription_status === 'trial' && profile.trial_ends_at) {
+        const diff = new Date(profile.trial_ends_at).getTime() - Date.now();
+        if (diff <= 0) { setIsTrialExpired(true); return; }
       }
-    }
-  }, [profile, user]);
+      // Subscription ended (active but past end date)
+      if (profile.subscription_status === 'active' && profile.subscription_ends_at) {
+        const diff = new Date(profile.subscription_ends_at).getTime() - Date.now();
+        if (diff <= 0) { setIsTrialExpired(true); return; }
+      }
+    };
 
-  // Timer and expiration check
-  useEffect(() => {
-    if (profile?.subscription_status === 'trial' && profile.trial_ends_at) {
-      const updateTimer = () => {
-        const end = new Date(profile.trial_ends_at!);
-        const now = new Date();
-        const diff = end.getTime() - now.getTime();
-
-        if (diff <= 0) {
-          setIsTrialExpired(true);
-        }
-      };
-
-      updateTimer();
-      const interval = setInterval(updateTimer, 60000); // Check every minute
-      return () => clearInterval(interval);
-    }
+    checkExpiry();
+    const interval = setInterval(checkExpiry, 60000);
+    return () => clearInterval(interval);
   }, [profile]);
+
+  // Realtime sinhronizacija — pre early returns (React pravila hookova)
+  useEventBus(EVENTS.STATION_CREATED, fetchStations);
+  useEventBus(EVENTS.STATION_UPDATED, fetchStations);
+  useEventBus(EVENTS.STATION_DELETED, fetchStations);
+
+  useEventBus(EVENTS.USER_PROFILE_UPDATED, useCallback(({ userId }: { userId: string }) => {
+    if (user?.id && userId === user.id) {
+      // Profil će se osvežiti kroz AuthContext — ne reloadujemo stranicu da ne bismo pravili loop
+      fetchStations();
+    }
+  }, [user?.id, fetchStations]));
+
+  // Filter stanica i clear click state — pre early returns
+  useEffect(() => {
+    filterStations();
+  }, [filterStations]);
+
+  useEffect(() => {
+    if (isPlaying && currentStation?.id === clickedStationId) {
+      setClickedStationId(null);
+    }
+  }, [isPlaying, currentStation?.id]);
 
   if (authLoading || (user && !profile)) {
     return (
@@ -149,6 +287,74 @@ export default function UserDashboard() {
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-infinity-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400">Učitavanje profila...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isTrialExpired) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-infinity-dark-900 p-4">
+        <div className="bg-white dark:bg-infinity-dark-800 rounded-3xl max-w-md w-full shadow-2xl overflow-hidden">
+          {/* Top accent bar */}
+          <div className="h-2 bg-gradient-to-r from-red-500 to-orange-400" />
+
+          <div className="p-8 text-center">
+            {/* Icon */}
+            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
+              <Clock className="text-red-500" size={36} />
+            </div>
+
+            {/* Title */}
+            <h2 className="text-2xl md:text-3xl font-serif font-bold text-gray-900 dark:text-white mb-3">
+              Probni period je istekao
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm md:text-base leading-relaxed">
+              Vaš besplatni probni period je završen. Kontaktirajte nas kako bismo aktivirali vaš nalog.
+            </p>
+
+            {/* Contact info */}
+            <div className="bg-gray-50 dark:bg-infinity-dark-700 rounded-2xl p-5 mb-6 text-left space-y-4">
+              <div>
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Telefon</p>
+                <a
+                  href="tel:+38169602902"
+                  className="text-lg font-bold text-gray-900 dark:text-white hover:text-infinity-green-500 dark:hover:text-infinity-green-400 transition-colors"
+                >
+                  +381 69 602902
+                </a>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Email</p>
+                <a
+                  href="mailto:info@infinityplay.rs"
+                  className="text-lg font-bold text-gray-900 dark:text-white hover:text-infinity-green-500 dark:hover:text-infinity-green-400 transition-colors"
+                >
+                  info@infinityplay.rs
+                </a>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col gap-3">
+              <Button fullWidth onClick={() => navigate('/subscription-options')} size="lg" className="font-bold">
+                Pogledaj Pakete
+              </Button>
+              <a
+                href="mailto:info@infinityplay.rs"
+                className="w-full py-3 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-center"
+              >
+                Pošalji Email
+              </a>
+              <button
+                onClick={handleSignOut}
+                className="w-full py-2 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <LogOut size={13} />
+                Odjavi se
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -165,151 +371,8 @@ export default function UserDashboard() {
     );
   }
 
-  if (isTrialExpired) {
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 transition-all duration-500">
-        <div className="bg-white dark:bg-infinity-dark-800 p-8 rounded-2xl max-w-md w-full text-center shadow-2xl border-2 border-red-500 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-500 to-orange-500"></div>
-          <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
-            <Clock className="text-red-500" size={40} />
-          </div>
-          <h2 className="text-3xl font-bold mb-4 text-gray-900 dark:text-white font-serif">Probni period je istekao!</h2>
-          <p className="mb-6 text-gray-600 dark:text-gray-300 text-lg">
-            Vaše vreme za besplatno korišćenje je isteklo.
-            <br />
-            <span className="text-sm opacity-75">Kontaktirajte nas za nastavak.</span>
-          </p>
-
-          <div className="bg-gray-50 dark:bg-infinity-dark-700 p-5 rounded-xl mb-8 text-left border border-gray-100 dark:border-gray-700">
-            <div className="mb-4">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Kontakt telefon</p>
-              <a href="tel:+381600000000" className="font-bold text-gray-900 dark:text-white text-xl hover:text-infinity-green-500 transition-colors">+381 60 000 0000</a>
-            </div>
-
-            <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Email podrška</p>
-              <a href="mailto:info@infinityplay.rs" className="font-bold text-gray-900 dark:text-white text-xl hover:text-infinity-green-500 transition-colors">info@infinityplay.rs</a>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <Button fullWidth onClick={() => navigate('/subscription')} size="lg" className="font-bold text-lg">
-              Pogledaj Pakete
-            </Button>
-            <Button variant="ghost" fullWidth onClick={() => window.location.href = 'mailto:info@infinityplay.rs'}>
-              Pošalji Email
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Realtime sinhronizacija - osveži stanice kada admin izmeni
-  useEventBus(EVENTS.STATION_CREATED, useCallback(() => {
-    fetchStations();
-  }, []));
-
-  useEventBus(EVENTS.STATION_UPDATED, useCallback(() => {
-    fetchStations();
-  }, []));
-
-  useEventBus(EVENTS.STATION_DELETED, useCallback(() => {
-    fetchStations();
-  }, []));
-
-  // Osveži profil kada se izmeni
-  useEventBus(EVENTS.USER_PROFILE_UPDATED, useCallback(({ userId }) => {
-    if (userId === user?.id) {
-      // Profil će se automatski osvežiti preko AuthContext
-      window.location.reload(); // Privremeno rešenje
-    }
-  }, [user?.id]));
-
-  const checkAndShowConfetti = async () => {
-    if (!user || !profile) return;
-
-    if (profile.subscription_tier && profile.subscription_tier !== 'free' && !profile.confetti_shown) {
-      setTimeout(() => {
-        const duration = 3000;
-        const animationEnd = Date.now() + duration;
-        const colors = ['#10b981', '#f97316', '#ffffff'];
-
-        const frame = () => {
-          confetti({
-            particleCount: 3,
-            angle: 60,
-            spread: 55,
-            origin: { x: 0 },
-            colors: colors
-          });
-          confetti({
-            particleCount: 3,
-            angle: 120,
-            spread: 55,
-            origin: { x: 1 },
-            colors: colors
-          });
-
-          if (Date.now() < animationEnd) {
-            requestAnimationFrame(frame);
-          }
-        };
-        frame();
-      }, 500);
-
-      profilesApi.update(user.id, { confetti_shown: true });
-    }
-  };
-
-  const checkOnboardingStatus = () => {
-    if (profile && !profile.onboarding_completed) {
-      setShowOnboarding(true);
-    }
-  };
-
   const handleOnboardingComplete = async () => {
     setShowOnboarding(false);
-  };
-
-  useEffect(() => {
-    filterStations();
-  }, [searchQuery, selectedGenre, stations]);
-
-  const fetchStations = async () => {
-    try {
-      const data = await stationsApi.getAll();
-      // Filter active stations and sort by name
-      const activeStations = data
-        .filter((s: RadioStation) => s.is_active)
-        .sort((a: RadioStation, b: RadioStation) => a.name.localeCompare(b.name));
-
-      setStations(activeStations);
-      setFilteredStations(activeStations);
-    } catch (error) {
-      console.error('Failed to fetch stations:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-
-  const filterStations = () => {
-    let filtered = [...stations];
-
-    if (searchQuery) {
-      filtered = filtered.filter(station =>
-        station.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        station.description?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    if (selectedGenre !== 'all') {
-      filtered = filtered.filter(station => station.genre === selectedGenre);
-    }
-
-    setFilteredStations(filtered);
   };
 
   const genres = Array.from(new Set(stations.map(s => s.genre)));
@@ -347,35 +410,36 @@ export default function UserDashboard() {
 
   const handleMojRadioClick = () => {
     if (!mojRadioStation) return;
+    if (songState !== 'idle') {
+      setPendingStation(mojRadioStation);
+      return;
+    }
     if (isMojRadioPlaying) {
       pause();
+      setClickedStationId(null);
     } else {
+      setClickedStationId(mojRadioStation.id);
       playStation(mojRadioStation);
     }
   };
 
   const handleStationClick = (station: RadioStation) => {
-    console.log('Station clicked:', station.name);
-    try {
-      if (currentStation?.id === station.id && isPlaying) {
-        console.log('Pausing station');
-        pause();
-      } else {
-        console.log('Playing station');
-        playStation(station);
-      }
-    } catch (error) {
-      console.error('Error in handleStationClick:', error);
+    if (songState !== 'idle') {
+      setPendingStation(station);
+      return;
+    }
+    if (currentStation?.id === station.id && isPlaying) {
+      pause();
+      setClickedStationId(null);
+    } else {
+      setClickedStationId(station.id);
+      playStation(station);
     }
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
-  };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors">
+    <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors overflow-x-hidden">
       {/* Admin pregled banner */}
       {adminViewUserId && (
         <div className="bg-amber-400 text-amber-900 px-4 py-2 flex items-center justify-center gap-3 text-sm font-medium">
@@ -431,7 +495,7 @@ export default function UserDashboard() {
                   <User size={18} className="text-gray-600 dark:text-gray-400 md:w-5 md:h-5" />
                 )}
                 <span className="text-xs md:text-sm font-medium text-gray-900 dark:text-white hidden sm:inline">
-                  {activeProfile?.display_name || user?.email?.split('@')[0]}
+                  {activeProfile?.venue_name || activeProfile?.display_name || user?.email?.split('@')[0]}
                 </span>
               </button>
 
@@ -546,29 +610,165 @@ export default function UserDashboard() {
         </div>
 
         <Card>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 md:gap-4 mb-4 md:mb-6">
-            <h2 className="text-xl md:text-2xl font-serif font-bold text-gray-900 dark:text-white">
-              Radio Stanice
-            </h2>
+          {/* 1. Moj Radio — na vrhu */}
+          {mojRadioStation && (
+            <div className="mb-4">
+              <MojRadioCard
+                isPlaying={isMojRadioPlaying}
+                onClick={handleMojRadioClick}
+                displayName={activeProfile?.display_name}
+              />
+            </div>
+          )}
 
-            <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="Pretraži stanice..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-infinity-dark-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-infinity-green-500 outline-none w-full sm:w-64"
-                />
+          {/* 2. Daljinski upravljač */}
+          {!adminViewUserId && (
+            <div className="mb-4">
+              <RemoteControlPanel
+                devices={remoteSessions}
+                myDeviceType={myDeviceType}
+                stations={remoteStations}
+                onSendCommand={sendRemoteCommand}
+              />
+            </div>
+          )}
+
+          {/* 3. Saved playlist resume card */}
+          {savedPlaylist.length > 0 && (
+            <div className="mb-4 rounded-2xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/40 px-4 py-3 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center flex-shrink-0">
+                <Music size={14} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-violet-900 dark:text-violet-100">Sačuvana playlista</p>
+                <p className="text-xs text-violet-600 dark:text-violet-400">{savedPlaylist.length} {savedPlaylist.length === 1 ? 'pesma' : 'pesme'}</p>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <button
+                  onClick={() => setShowResumeModal(true)}
+                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-colors active:scale-95"
+                >
+                  Nastavi
+                </button>
+                <button
+                  onClick={clearSavedPlaylist}
+                  className="px-2 py-1.5 text-violet-400 hover:text-violet-600 dark:hover:text-violet-300 transition-colors"
+                  title="Obriši sačuvanu playlistu"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 4. Song mini player */}
+          <SongMiniPlayer />
+
+          {/* 4. DJ Manager card + search */}
+          <div className="mb-4 md:mb-6">
+            {/* DJ Manager card-style button */}
+            <button
+              ref={djButtonRef}
+              onClick={() => setIsDJOpen(true)}
+              className="relative w-full cursor-pointer rounded-2xl overflow-hidden mb-3 select-none group text-left active:scale-[0.99]"
+              style={{
+                background: 'linear-gradient(135deg, #0f0a1e 0%, #1e0a3c 55%, #0f172a 100%)',
+                border: '1px solid rgba(124,58,237,0.22)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px rgba(124,58,237,0.08)',
+                transition: 'box-shadow 0.35s ease, transform 0.15s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 28px rgba(0,0,0,0.5), 0 0 0 1px rgba(124,58,237,0.22), 0 0 28px rgba(124,58,237,0.14)'; }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px rgba(124,58,237,0.08)'; }}
+            >
+              {/* Ambient left glow */}
+              <div className="absolute inset-0 pointer-events-none"
+                style={{ background: 'radial-gradient(ellipse at 15% 50%, rgba(124,58,237,0.14) 0%, transparent 60%)' }}
+              />
+
+              <div className="relative flex items-center gap-4 sm:gap-6 px-4 py-4 sm:px-6 sm:py-5">
+                {/* Left: text */}
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg sm:text-2xl font-bold text-white leading-tight">DJ Manager</h2>
+                  <p className="text-xs sm:text-sm mt-0.5" style={{ color: 'rgba(196,181,253,0.65)' }}>
+                    Budi svoj DJ, pusti pesme koje ti želiš
+                  </p>
+                  <div className="mt-2 flex items-end gap-[3px] h-5" aria-hidden>
+                    {[4, 7, 5, 9, 6, 8, 4, 7, 5, 6, 8, 5].map((h, i) => (
+                      <div key={i} style={{ width: 3, height: `${h * 2}px`, borderRadius: 2, background: 'rgba(124,58,237,0.5)', flexShrink: 0 }} />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right: DJ with headphones illustration */}
+                <div style={{ flexShrink: 0 }}>
+                  <svg viewBox="0 0 80 80" width="80" height="80">
+                    {/* Background glow */}
+                    <circle cx="40" cy="40" r="36" fill="rgba(88,28,135,0.18)" />
+                    {/* Shoulders */}
+                    <ellipse cx="40" cy="80" rx="24" ry="13" fill="rgba(109,40,217,0.28)" />
+                    {/* Neck */}
+                    <rect x="34" y="59" width="12" height="10" rx="4" fill="rgba(109,40,217,0.22)" />
+                    {/* Head */}
+                    <circle cx="40" cy="44" r="18" fill="rgba(67,20,100,0.45)" stroke="rgba(167,139,250,0.3)" strokeWidth="1.5" />
+                    {/* Eyes — cool closed look */}
+                    <path d="M 33 43 Q 35.5 41 38 43" stroke="rgba(216,180,254,0.9)" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+                    <path d="M 42 43 Q 44.5 41 47 43" stroke="rgba(216,180,254,0.9)" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+                    {/* Smirk */}
+                    <path d="M 35 50 Q 41 55 47 51" stroke="rgba(196,181,253,0.65)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+                    {/* Headphone band */}
+                    <path d="M 23 40 Q 23 18 40 18 Q 57 18 57 40" stroke="rgba(167,139,250,0.9)" strokeWidth="3.5" fill="none" strokeLinecap="round" />
+                    {/* Left ear cup */}
+                    <rect x="15" y="34" width="11" height="16" rx="5.5" fill="rgba(109,40,217,0.75)" stroke="rgba(167,139,250,0.5)" strokeWidth="1.2" />
+                    <circle cx="20.5" cy="42" r="3" fill="rgba(167,139,250,0.12)" stroke="rgba(196,181,253,0.3)" strokeWidth="0.8" />
+                    {/* Right ear cup */}
+                    <rect x="54" y="34" width="11" height="16" rx="5.5" fill="rgba(109,40,217,0.75)" stroke="rgba(167,139,250,0.5)" strokeWidth="1.2" />
+                    <circle cx="59.5" cy="42" r="3" fill="rgba(167,139,250,0.12)" stroke="rgba(196,181,253,0.3)" strokeWidth="0.8" />
+                    {/* Floating eighth note */}
+                    <circle cx="66" cy="14" r="3.5" fill="rgba(196,181,253,0.3)" />
+                    <line x1="69.5" y1="14" x2="69.5" y2="5" stroke="rgba(196,181,253,0.3)" strokeWidth="1.5" strokeLinecap="round" />
+                    <line x1="69.5" y1="5" x2="74" y2="7.5" stroke="rgba(196,181,253,0.3)" strokeWidth="1.3" strokeLinecap="round" />
+                    {/* Sparkle dots */}
+                    <circle cx="11" cy="22" r="1.8" fill="rgba(167,139,250,0.3)" />
+                    <circle cx="7" cy="32" r="1.2" fill="rgba(167,139,250,0.2)" />
+                    <circle cx="72" cy="57" r="1.5" fill="rgba(167,139,250,0.25)" />
+                    <circle cx="76" cy="45" r="1" fill="rgba(167,139,250,0.2)" />
+                  </svg>
+                </div>
               </div>
 
-              <div className="relative">
-                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
+              {/* Bottom accent line */}
+              <div className="h-px w-full"
+                style={{ background: 'linear-gradient(90deg, transparent, rgba(124,58,237,0.5), transparent)', opacity: 0.45 }}
+              />
+            </button>
+
+            <div className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                <input
+                  type="text"
+                  placeholder="Pretraži stanicu..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-9 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-infinity-dark-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-infinity-green-500 outline-none w-full"
+                  style={{ fontSize: '16px' }}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              <div className="relative flex-shrink-0">
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                 <select
                   value={selectedGenre}
                   onChange={(e) => setSelectedGenre(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-infinity-dark-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-infinity-green-500 outline-none appearance-none cursor-pointer"
+                  className="pl-9 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-infinity-dark-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-infinity-green-500 outline-none appearance-none cursor-pointer max-w-[140px]"
+                  style={{ fontSize: '16px' }}
                 >
                   <option value="all">Svi žanrovi</option>
                   {genres.map(genre => (
@@ -578,15 +778,6 @@ export default function UserDashboard() {
               </div>
             </div>
           </div>
-
-          {/* Moj Radio — prikazan uvek na vrhu ako admin postavi stream */}
-          {mojRadioStation && (
-            <MojRadioCard
-              isPlaying={isMojRadioPlaying}
-              onClick={handleMojRadioClick}
-              displayName={activeProfile?.display_name}
-            />
-          )}
 
           {loading ? (
             <div className="text-center py-12">
@@ -601,7 +792,9 @@ export default function UserDashboard() {
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredStations.map((station) => {
-                const isCurrentlyPlaying = currentStation?.id === station.id && isPlaying;
+                const isCurrentlyPlaying =
+                  (currentStation?.id === station.id && isPlaying) ||
+                  clickedStationId === station.id;
 
                 return (
                   <StationCard
@@ -638,6 +831,142 @@ export default function UserDashboard() {
         isOpen={showDashboardSelector}
         onClose={() => setShowDashboardSelector(false)}
       />
+
+      <DJManagerOverlay
+        isOpen={isDJOpen}
+        onClose={() => setIsDJOpen(false)}
+        remoteSessions={remoteSessions}
+        sendRemoteCommand={sendRemoteCommand}
+        buttonRef={djButtonRef}
+      />
+
+      {/* Station intercept modal — shown when song is playing and user picks a station */}
+      {pendingStation && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 pb-32 sm:pb-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setPendingStation(null)}
+        >
+          <div
+            className="bg-white dark:bg-infinity-dark-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl border border-gray-100 dark:border-gray-700"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-gradient-infinity rounded-xl flex items-center justify-center flex-shrink-0 text-xl">
+                {pendingStation.icon_emoji || '📻'}
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 dark:text-white">{pendingStation.name}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Kada prebaciti stanicu?</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  const s = pendingStation;
+                  const all = currentSong ? [currentSong, ...songQueue] : [...songQueue];
+                  if (all.length > 0) saveCurrentQueueAs(all);
+                  setPendingStation(null);
+                  stopSong();
+                  setTimeout(() => { setClickedStationId(s.id); playStation(s); }, 1400);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 bg-infinity-green-500 hover:bg-infinity-green-600 text-white rounded-xl transition-colors font-semibold"
+              >
+                <Play size={18} fill="currentColor" />
+                <span>Odmah</span>
+              </button>
+              <button
+                onClick={() => {
+                  const s = pendingStation;
+                  setPendingStation(null);
+                  // scheduleSwitch(0) saves entire queue and clears it, then fires action after current song
+                  scheduleSwitch(0, () => { setClickedStationId(s.id); playStation(s); });
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 bg-gray-100 dark:bg-infinity-dark-700 hover:bg-gray-200 dark:hover:bg-infinity-dark-600 text-gray-900 dark:text-white rounded-xl transition-colors font-semibold"
+              >
+                <Clock size={18} />
+                <span>Nakon ove pesme</span>
+              </button>
+              {songQueue.length >= 1 && (
+                <button
+                  onClick={() => {
+                    const s = pendingStation;
+                    setPendingStation(null);
+                    scheduleSwitch(1, () => { setClickedStationId(s.id); playStation(s); });
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-gray-100 dark:bg-infinity-dark-700 hover:bg-gray-200 dark:hover:bg-infinity-dark-600 text-gray-900 dark:text-white rounded-xl transition-colors font-semibold"
+                >
+                  <Clock size={18} />
+                  <span>Nakon još 2 pesme</span>
+                </button>
+              )}
+              {songQueue.length >= 2 && (
+                <button
+                  onClick={() => {
+                    const s = pendingStation;
+                    setPendingStation(null);
+                    scheduleSwitch(2, () => { setClickedStationId(s.id); playStation(s); });
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-gray-100 dark:bg-infinity-dark-700 hover:bg-gray-200 dark:hover:bg-infinity-dark-600 text-gray-900 dark:text-white rounded-xl transition-colors font-semibold"
+                >
+                  <Clock size={18} />
+                  <span>Nakon još 3 pesme</span>
+                </button>
+              )}
+              <button
+                onClick={() => setPendingStation(null)}
+                className="w-full py-3 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              >
+                Otkaži
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resume saved playlist modal */}
+      {showResumeModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 pb-32 sm:pb-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowResumeModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-infinity-dark-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl border border-gray-100 dark:border-gray-700"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Music size={18} className="text-white" />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 dark:text-white">Nastavi playlistu</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{savedPlaylist.length} {savedPlaylist.length === 1 ? 'pesma' : 'pesme'} sačuvano</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <button
+                onClick={() => { setShowResumeModal(false); resumeSavedPlaylist(true); }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl transition-colors font-semibold"
+              >
+                <Play size={18} fill="currentColor" />
+                <span>Odmah</span>
+              </button>
+              <button
+                onClick={() => { setShowResumeModal(false); resumeSavedPlaylist(false); }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 bg-gray-100 dark:bg-infinity-dark-700 hover:bg-gray-200 dark:hover:bg-infinity-dark-600 text-gray-900 dark:text-white rounded-xl transition-colors font-semibold"
+              >
+                <Clock size={18} />
+                <span>Nakon ove pesme / ICY promene</span>
+              </button>
+              <button
+                onClick={() => setShowResumeModal(false)}
+                className="w-full py-3 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              >
+                Otkaži
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

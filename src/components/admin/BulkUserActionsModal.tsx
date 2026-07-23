@@ -61,11 +61,7 @@ export default function BulkUserActionsModal({ isOpen, onClose, users, onSuccess
                         await profilesApi.update(userId, { subscription_status: 'inactive' });
                         break;
                     case 'delete':
-                        // In production, this would be a soft delete
-                        await profilesApi.update(userId, {
-                            subscription_status: 'inactive',
-                            subscription_tier: 'free'
-                        });
+                        await profilesApi.delete(userId);
                         break;
                 }
             });
@@ -185,7 +181,7 @@ export default function BulkUserActionsModal({ isOpen, onClose, users, onSuccess
                                     )}
                                     <div className="flex-1 min-w-0">
                                         <p className="font-medium text-gray-900 dark:text-white truncate">
-                                            {user.display_name || user.email}
+                                            {user.venue_name || user.display_name || user.email}
                                         </p>
                                         <p className="text-sm text-gray-500 truncate">{user.email}</p>
                                     </div>

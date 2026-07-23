@@ -13,7 +13,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   session: any | null;
   loading: boolean;
-  signUp: (email: string, password: string, first_name: string, last_name: string, phone_number: string, country_code: string) => Promise<void>;
+  signUp: (email: string, password: string, first_name: string, last_name: string, phone_number: string, country_code: string, venue_name: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const urlParams = new URLSearchParams(queryString);
     const tokenFromUrl = urlParams.get('t');
     if (tokenFromUrl) {
-      sessionStorage.setItem('auth_token', tokenFromUrl);
+      localStorage.setItem('auth_token', tokenFromUrl);
       // Ukloni token iz URL-a
       urlParams.delete('t');
       const newHash = hash.split('?')[0] + (urlParams.toString() ? '?' + urlParams.toString() : '');
@@ -89,10 +89,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
   }, []);
 
-  const signUp = async (email: string, password: string, first_name: string, last_name: string, phone_number: string, country_code: string) => {
+  const signUp = async (email: string, password: string, first_name: string, last_name: string, phone_number: string, country_code: string, venue_name: string) => {
     try {
       // Register returns { user, token }
-      const data = await auth.register(email, password, first_name, last_name, phone_number, country_code);
+      const data = await auth.register(email, password, first_name, last_name, phone_number, country_code, venue_name);
 
       const newUser = data.user;
 

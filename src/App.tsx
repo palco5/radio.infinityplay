@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AudioProvider } from './contexts/AudioContext';
 import { useAudio } from './contexts/AudioContext';
+import { SongPlayerProvider } from './contexts/SongPlayerContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import AudioPlayer from './components/player/AudioPlayer';
@@ -152,7 +153,9 @@ function App() {
         <AuthProvider>
           <ThemeProvider>
             <AudioProvider>
-              <AppContent />
+              <SongPlayerProvider>
+                <AppContent />
+              </SongPlayerProvider>
             </AudioProvider>
           </ThemeProvider>
         </AuthProvider>
