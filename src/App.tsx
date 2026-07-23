@@ -18,6 +18,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import CookiePolicyPage from './pages/CookiePolicyPage';
+import RefundPolicyPage from './pages/RefundPolicyPage';
 import ProtectedRoute from './components/routing/ProtectedRoute';
 import CookieConsent from './components/ui/CookieConsent';
 
@@ -59,6 +60,7 @@ function AppContent() {
             <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
             <Route path="/terms-of-service" element={<TermsOfServicePage />} />
             <Route path="/cookie-policy" element={<CookiePolicyPage />} />
+            <Route path="/refund-policy" element={<RefundPolicyPage />} />
             <Route
               path="/payment"
               element={

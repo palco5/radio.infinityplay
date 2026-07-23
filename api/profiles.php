@@ -4,6 +4,14 @@ require_once 'config.php';
 setCORSHeaders();
 
 $method = $_SERVER['REQUEST_METHOD'];
+
+// Self-heal: add Paddle billing columns if this DB predates them
+try {
+    $db = getDB();
+    $db->exec("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS paddle_customer_id VARCHAR(64)");
+    $db->exec("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS paddle_subscription_id VARCHAR(64)");
+} catch (Exception $e) { /* ignore */ }
+
 $currentUser = requireAuth();
 
 $userId = $_GET['id'] ?? '';
@@ -36,7 +44,8 @@ if ($method === 'GET') {
                bio, phone_number, country_code, subscription_tier, subscription_status,
                theme_preference, email_notifications, newsletter_subscribed, business_category,
                custom_location, venue_name, jingle_url, jingle_interval_minutes, my_radio_stream_url, is_admin, created_at,
-               onboarding_completed, total_listening_minutes, trial_started_at, trial_ends_at, subscription_ends_at, confetti_shown
+               onboarding_completed, total_listening_minutes, trial_started_at, trial_ends_at, subscription_ends_at, confetti_shown,
+               cancel_at_period_end, paddle_customer_id, paddle_subscription_id
         FROM profiles WHERE id = ?
     ");
     $stmt->execute([$userId]);
@@ -164,7 +173,8 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
                bio, phone_number, country_code, subscription_tier, subscription_status,
                theme_preference, email_notifications, newsletter_subscribed, business_category,
                custom_location, venue_name, jingle_url, jingle_interval_minutes, my_radio_stream_url, is_admin, created_at,
-               trial_ends_at, recommended_stations, onboarding_completed
+               trial_ends_at, recommended_stations, onboarding_completed,
+               cancel_at_period_end, paddle_customer_id, paddle_subscription_id, subscription_ends_at
         FROM profiles WHERE id = ?
     ");
     $stmt->execute([$userId]);

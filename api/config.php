@@ -16,6 +16,19 @@ define('CORS_ORIGIN', 'https://radio.infinityplay.rs');
 define('MEDIACP_API_URL', 'https://media.infinityplay.rs/'); // e.g. https://cp.infinityplay.rs
 define('MEDIACP_API_KEY', 'hZ2GeXzUiMudWMRYsHyopFensXZpnFuKnZ-IVsmrV9CZ1nrLpXiEmw=='); // paste the key value here directly, not in chat
 
+// Paddle (billing) — fill these in once your Paddle account is approved.
+// PADDLE_CLIENT_TOKEN is safe to expose publicly (it's the client-side token, like a Stripe publishable key).
+// PADDLE_API_KEY and PADDLE_WEBHOOK_SECRET are private — never expose them to the frontend.
+define('PADDLE_ENVIRONMENT', 'sandbox'); // 'sandbox' while testing, 'production' when live
+define('PADDLE_CLIENT_TOKEN', '');       // Paddle > Developer tools > Authentication > Client-side token
+define('PADDLE_API_KEY', '');            // Paddle > Developer tools > Authentication > API key (server-side only)
+define('PADDLE_WEBHOOK_SECRET', '');     // Paddle > Developer tools > Notifications > your webhook destination > secret key
+
+// Map your internal plan names to the Price IDs you create in Paddle > Catalog > Prices
+define('PADDLE_PRICE_BASIC', '');   // Basic Radio plan price ID (pri_...)
+define('PADDLE_PRICE_BRANDED', ''); // Branded Radio plan price ID (pri_...)
+define('PADDLE_PRICE_HOST', '');    // Host Radio plan price ID (pri_...)
+
 // Error reporting for debugging (disable in production)
 ini_set('display_errors', 0);
 error_reporting(E_ALL);

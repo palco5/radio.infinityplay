@@ -29,9 +29,7 @@ import {
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import ProfileManagement from '../components/dashboard/ProfileManagement';
 import OnboardingModal from '../components/onboarding/OnboardingModal';
-import SubscriptionManagement from '../components/dashboard/SubscriptionManagement';
 import SettingsModal from '../components/dashboard/SettingsModal';
 import TrialStatus from '../components/dashboard/TrialStatus';
 import StationCard from '../components/StationCard';
@@ -52,9 +50,8 @@ export default function UserDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
   const [loading, setLoading] = useState(true);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'account' | 'security' | 'billing' | 'notifications' | 'danger'>('account');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showDashboardSelector, setShowDashboardSelector] = useState(false);
   const [isTrialExpired, setIsTrialExpired] = useState(false);
@@ -487,7 +484,7 @@ export default function UserDashboard() {
               </button>
 
               <button
-                onClick={() => !adminViewUserId && setShowProfileModal(true)}
+                onClick={() => { if (!adminViewUserId) { setSettingsInitialTab('account'); setShowSettingsModal(true); } }}
                 className={`flex items-center space-x-2 px-2 py-1.5 bg-gray-100 dark:bg-infinity-dark-700 rounded-full transition-colors ${adminViewUserId ? 'cursor-default' : 'hover:bg-gray-200 dark:hover:bg-infinity-dark-600'}`}
               >
                 {activeProfile?.avatar_url ? (
@@ -524,14 +521,14 @@ export default function UserDashboard() {
           <div className="grid grid-cols-3 items-center h-20">
             <div className="flex items-center space-x-4 justify-self-start">
               <button
-                onClick={() => !adminViewUserId && setShowProfileModal(true)}
+                onClick={() => { if (!adminViewUserId) { setSettingsInitialTab('account'); setShowSettingsModal(true); } }}
                 className={`text-base font-semibold text-gray-900 dark:text-white transition-opacity ${adminViewUserId ? 'cursor-default' : 'hover:opacity-70'}`}
               >
                 {activeProfile?.venue_name || activeProfile?.display_name || user?.email?.split('@')[0]}
               </button>
               <span className="text-gray-300 dark:text-gray-600">|</span>
               <button
-                onClick={() => setShowSettingsModal(true)}
+                onClick={() => { setSettingsInitialTab('account'); setShowSettingsModal(true); }}
                 className="text-base text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
               >
                 Podešavanja
@@ -627,21 +624,21 @@ export default function UserDashboard() {
             </h3>
             <div className="space-y-1.5 md:space-y-2">
               <button
-                onClick={() => setShowProfileModal(true)}
+                onClick={() => { setSettingsInitialTab('account'); setShowSettingsModal(true); }}
                 className="w-full flex items-center space-x-3 p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors text-left"
               >
                 <User className="text-infinity-green-600" size={20} />
                 <span className="text-gray-700 dark:text-gray-300">Moj Profil</span>
               </button>
               <button
-                onClick={() => setShowSubscriptionModal(true)}
+                onClick={() => { setSettingsInitialTab('billing'); setShowSettingsModal(true); }}
                 className="w-full flex items-center space-x-3 p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors text-left"
               >
                 <CreditCard className="text-infinity-green-600" size={20} />
                 <span className="text-gray-700 dark:text-gray-300">Pretplata</span>
               </button>
               <button
-                onClick={() => setShowSettingsModal(true)}
+                onClick={() => { setSettingsInitialTab('account'); setShowSettingsModal(true); }}
                 className="w-full flex items-center space-x-3 p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors text-left"
               >
                 <Settings className="text-infinity-green-600" size={20} />
@@ -852,17 +849,10 @@ export default function UserDashboard() {
         </Card>
       </div>
 
-      <ProfileManagement
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-      />
-      <SubscriptionManagement
-        isOpen={showSubscriptionModal}
-        onClose={() => setShowSubscriptionModal(false)}
-      />
       <SettingsModal
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
+        initialTab={settingsInitialTab}
       />
       <OnboardingModal
         isOpen={showOnboarding}

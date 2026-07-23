@@ -1,4 +1,4 @@
-import { Radio, Mail, Globe, ExternalLink, Shield, FileText, Cookie } from 'lucide-react';
+import { Radio, Mail, Globe, ExternalLink, Shield, FileText, Cookie, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Footer() {
@@ -119,6 +119,12 @@ export default function Footer() {
                   Politika kolačića
                 </Link>
               </li>
+              <li>
+                <Link to="/refund-policy" className="flex items-center gap-2 text-gray-400 hover:text-infinity-green-400 transition-colors text-sm">
+                  <RotateCcw size={14} />
+                  Politika povraćaja novca
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
@@ -134,6 +140,8 @@ export default function Footer() {
               <Link to="/terms-of-service" className="text-gray-400 hover:text-infinity-green-400 transition-colors">Uslovi korišćenja</Link>
               <span className="text-gray-700">·</span>
               <Link to="/cookie-policy" className="text-gray-400 hover:text-infinity-green-400 transition-colors">Kolačići</Link>
+              <span className="text-gray-700">·</span>
+              <Link to="/refund-policy" className="text-gray-400 hover:text-infinity-green-400 transition-colors">Povraćaj novca</Link>
               <span className="text-gray-700">·</span>
               <a href="https://infinityplay.rs" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-infinity-green-400 transition-colors inline-flex items-center gap-1">
                 <span>Powered by InfinityPlay</span>

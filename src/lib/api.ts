@@ -84,6 +84,22 @@ export const auth = {
         return data.users;
     },
 
+    async changePassword(currentPassword: string, newPassword: string) {
+        return apiCall('/auth.php?path=change-password', {
+            method: 'POST',
+            body: JSON.stringify({ currentPassword, newPassword }),
+        });
+    },
+
+    async deleteAccount(password: string) {
+        const data = await apiCall('/auth.php?path=delete-account', {
+            method: 'POST',
+            body: JSON.stringify({ password }),
+        });
+        localStorage.removeItem('auth_token');
+        return data;
+    },
+
     logout() {
         localStorage.removeItem('auth_token');
     },
@@ -282,6 +298,18 @@ export const nowplaying = {
         } catch {
             return { title: '', coverart: null };
         }
+    },
+};
+
+// Paddle billing — checkout config + subscription management
+export const paddle = {
+    async getConfig(): Promise<{ environment: string; clientToken: string; prices: Record<string, string> }> {
+        const response = await fetch(`${API_URL}/paddle_config.php`);
+        return response.json();
+    },
+
+    async cancelSubscription() {
+        return apiCall('/paddle_subscription.php?action=cancel', { method: 'POST' });
     },
 };
 

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import Modal from '../ui/Modal';
 import AuthModal from '../auth/AuthModal';
 import { useAuth } from '../../contexts/AuthContext';
+import { openPaddleCheckout } from '../../lib/paddle';
 
 const pricingPlans = [
   {
@@ -76,8 +77,15 @@ export default function PricingSection() {
   const [selectedPlan, setSelectedPlan] = useState<typeof pricingPlans[0] | null>(null);
 
   const [showContactModal, setShowContactModal] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
 
-  const handlePlanSelect = (plan: typeof pricingPlans[0]) => {
+  const planKeyForPaddle: Record<string, string> = {
+    'basic-radio': 'basic',
+    'branded-radio': 'branded',
+    'host-radio': 'host',
+  };
+
+  const handlePlanSelect = async (plan: typeof pricingPlans[0]) => {
     setSelectedPlan(plan);
     if (plan.id === 'host-radio' || plan.id === 'branded-radio') {
       setShowContactModal(true);
@@ -85,8 +93,14 @@ export default function PricingSection() {
     }
     if (!user) {
       setShowAuthModal(true);
-    } else {
-      window.location.href = `#checkout?plan=${plan.id}`;
+      return;
+    }
+
+    setCheckoutError('');
+    try {
+      await openPaddleCheckout(planKeyForPaddle[plan.id], user.id, user.email);
+    } catch (err: any) {
+      setCheckoutError(err.message || 'Plaćanje trenutno nije dostupno, pokušajte kasnije.');
     }
   };
 
@@ -100,7 +114,9 @@ export default function PricingSection() {
           <p className="text-base md:text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-4 md:mb-6">
             Odaberite plan koji najbolje odgovara vašim potrebama
           </p>
-
+          {checkoutError && (
+            <p className="mt-4 text-sm text-red-600 dark:text-red-400 max-w-md mx-auto">{checkoutError}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-7xl mx-auto">

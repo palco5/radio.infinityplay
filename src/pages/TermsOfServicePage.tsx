@@ -46,7 +46,14 @@ export default function TermsOfServicePage() {
               <li><strong>Branded Radio</strong> — mesečna pretplata sa dodatnim funkcijama brendiranja</li>
               <li><strong>Host Radio</strong> — godišnja pretplata za napredne korisnike</li>
             </ul>
-            <p className="mt-3">Plaćanje se vrši putem PayPal sistema. Pretplate se automatski obnavljaju na kraju svakog obračunskog perioda. Otkazivanje je moguće u svakom trenutku, a pristup traje do kraja plaćenog perioda.</p>
+            <p className="mt-3">
+              Plaćanja obrađuje <strong>Paddle.com Market Limited</strong>, naš ovlašćeni prodavac (Merchant of Record) —
+              Paddle se pojavljuje na vašem bankovnom izvodu kao prodavac i odgovoran je za naplatu, poresku obradu i
+              podršku vezanu za plaćanje. Pretplate se automatski obnavljaju na kraju svakog obračunskog perioda.
+              Otkazivanje je moguće u svakom trenutku putem Podešavanja naloga, a pristup traje do kraja plaćenog
+              perioda. Detalje o povraćaju novca pogledajte u našoj{' '}
+              <a href="/refund-policy" className="text-infinity-green-500 hover:underline">Politici povraćaja novca</a>.
+            </p>
           </section>
 
           <section>
@@ -67,8 +74,14 @@ export default function TermsOfServicePage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">7. Intelektualna svojina</h2>
-            <p>Sav sadržaj na platformi (dizajn, kod, logotipi, naziv) vlasništvo je kompanije InfinityPlay. Zabranjeno je kopiranje, reprodukovanje ili distribucija bez pisane dozvole. Radio stanice emituju sadržaj u skladu sa važećim propisima o autorskim pravima.</p>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">7. Vlasnik usluge i intelektualna svojina</h2>
+            <p>
+              Uslugu InfinityPlay Radio pruža{' '}
+              <strong className="bg-yellow-100 dark:bg-yellow-900/40 px-1 rounded">[PRAVNO IME / PIB — dopuniti]</strong>{' '}
+              (u daljem tekstu: "InfinityPlay"). Sav sadržaj na platformi (dizajn, kod, logotipi, naziv) vlasništvo je
+              InfinityPlay. Zabranjeno je kopiranje, reprodukovanje ili distribucija bez pisane dozvole. Radio stanice
+              emituju sadržaj u skladu sa važećim propisima o autorskim pravima.
+            </p>
           </section>
 
           <section>
@@ -93,7 +106,7 @@ export default function TermsOfServicePage() {
 
           <section>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">11. Kontakt</h2>
-            <p>Za pitanja vezana za Uslove korišćenja: <a href="mailto:info@infinityplay.rs" className="text-infinity-green-500 hover:underline">info@infinityplay.rs</a></p>
+            <p>Za pitanja vezana za Uslove korišćenja: <a href="mailto:support@infinityplay.rs" className="text-infinity-green-500 hover:underline">support@infinityplay.rs</a></p>
           </section>
         </div>
       </div>

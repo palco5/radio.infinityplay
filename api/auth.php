@@ -6,6 +6,13 @@ setCORSHeaders();
 $method = $_SERVER['REQUEST_METHOD'];
 $path = isset($_GET['path']) ? $_GET['path'] : '';
 
+// Self-heal: add Paddle billing columns if this DB predates them
+try {
+    $db = getDB();
+    $db->exec("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS paddle_customer_id VARCHAR(64)");
+    $db->exec("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS paddle_subscription_id VARCHAR(64)");
+} catch (Exception $e) { /* ignore */ }
+
 // Register
 if ($method === 'POST' && $path === 'register') {
     $data = getRequestBody();
@@ -155,6 +162,67 @@ if ($method === 'GET' && $path === 'users') {
     $users = $stmt->fetchAll();
 
     sendJSON(['users' => $users]);
+}
+
+// Change password
+if ($method === 'POST' && $path === 'change-password') {
+    $currentUser = requireAuth();
+    $data = getRequestBody();
+
+    $currentPassword = $data['currentPassword'] ?? '';
+    $newPassword = $data['newPassword'] ?? '';
+
+    if (empty($currentPassword) || empty($newPassword)) {
+        sendJSON(['error' => 'Trenutna i nova lozinka su obavezne'], 400);
+    }
+    if (strlen($newPassword) < 8) {
+        sendJSON(['error' => 'Nova lozinka mora imati bar 8 karaktera'], 400);
+    }
+
+    $db = getDB();
+    $stmt = $db->prepare("SELECT password FROM profiles WHERE id = ?");
+    $stmt->execute([$currentUser['userId']]);
+    $row = $stmt->fetch();
+
+    if (!$row || !password_verify($currentPassword, $row['password'])) {
+        sendJSON(['error' => 'Trenutna lozinka nije tačna'], 401);
+    }
+
+    $hashed = password_hash($newPassword, PASSWORD_BCRYPT);
+    $stmt = $db->prepare("UPDATE profiles SET password = ? WHERE id = ?");
+    $stmt->execute([$hashed, $currentUser['userId']]);
+
+    sendJSON(['success' => true, 'message' => 'Lozinka je uspešno promenjena']);
+}
+
+// Delete own account
+if ($method === 'POST' && $path === 'delete-account') {
+    $currentUser = requireAuth();
+    $data = getRequestBody();
+
+    $password = $data['password'] ?? '';
+    if (empty($password)) {
+        sendJSON(['error' => 'Lozinka je obavezna za potvrdu brisanja naloga'], 400);
+    }
+
+    $db = getDB();
+    $stmt = $db->prepare("SELECT password FROM profiles WHERE id = ?");
+    $stmt->execute([$currentUser['userId']]);
+    $row = $stmt->fetch();
+
+    if (!$row || !password_verify($password, $row['password'])) {
+        sendJSON(['error' => 'Lozinka nije tačna'], 401);
+    }
+
+    // remote_sessions has no FK cascade — clean it up explicitly.
+    // favorites / listening_sessions / user_jingles cascade via FK on profiles delete.
+    $stmt = $db->prepare("DELETE FROM remote_sessions WHERE user_id = ?");
+    $stmt->execute([$currentUser['userId']]);
+
+    $stmt = $db->prepare("DELETE FROM profiles WHERE id = ?");
+    $stmt->execute([$currentUser['userId']]);
+
+    sendJSON(['success' => true, 'message' => 'Nalog je obrisan']);
 }
 
 sendJSON(['error' => 'Not found'], 404);
