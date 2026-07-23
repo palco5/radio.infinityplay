@@ -76,8 +76,7 @@ export default function TermsOfServicePage() {
           <section>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">7. Vlasnik usluge i intelektualna svojina</h2>
             <p>
-              Uslugu InfinityPlay Radio pruža{' '}
-              <strong className="bg-yellow-100 dark:bg-yellow-900/40 px-1 rounded">[PRAVNO IME / PIB — dopuniti]</strong>{' '}
+              Uslugu InfinityPlay Radio pruža <strong>Bitrejt d.o.o.</strong>{' '}
               (u daljem tekstu: "InfinityPlay"). Sav sadržaj na platformi (dizajn, kod, logotipi, naziv) vlasništvo je
               InfinityPlay. Zabranjeno je kopiranje, reprodukovanje ili distribucija bez pisane dozvole. Radio stanice
               emituju sadržaj u skladu sa važećim propisima o autorskim pravima.

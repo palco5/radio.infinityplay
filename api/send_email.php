@@ -19,8 +19,8 @@ if ($method === 'POST') {
     // Email headers
     $headers = "MIME-Version: 1.0" . "\r\n";
     $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-    $headers .= 'From: InfinityPlay Radio <info@infinityplay.rs>' . "\r\n";
-    $headers .= 'Reply-To: info@infinityplay.rs' . "\r\n";
+    $headers .= 'From: InfinityPlay Radio <support@infinityplay.rs>' . "\r\n";
+    $headers .= 'Reply-To: support@infinityplay.rs' . "\r\n";
     $headers .= 'X-Mailer: PHP/' . phpversion();
 
     // Use PHP mail() function which works on standard hosting environments like Loopia

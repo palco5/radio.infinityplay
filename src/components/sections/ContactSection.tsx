@@ -18,7 +18,7 @@ export default function ContactSection() {
     try {
       // Send email to admin
       await api.emails.send(
-        'info@infinityplay.rs', // Destination email
+        'support@infinityplay.rs', // Destination email
         `Nova poruka od: ${formData.name}`, // Subject
         `
           <h3>Nova poruka sa sajta</h3>
@@ -66,8 +66,8 @@ export default function ContactSection() {
                   <h3 className="text-base md:text-lg font-serif font-bold text-gray-900 dark:text-white">
                     Email
                   </h3>
-                  <a href="mailto:info@infinityplay.rs" className="text-sm md:text-base text-infinity-green-600 hover:underline">
-                    info@infinityplay.rs
+                  <a href="mailto:support@infinityplay.rs" className="text-sm md:text-base text-infinity-green-600 hover:underline">
+                    support@infinityplay.rs
                   </a>
                 </div>
               </div>

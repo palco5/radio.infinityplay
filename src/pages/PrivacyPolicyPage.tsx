@@ -14,7 +14,7 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">1. Rukovalac podataka</h2>
-            <p>InfinityPlay Radio („mi", „nas" ili „naša kompanija") je rukovalac ličnih podataka koje prikupljamo. Kontaktirajte nas na: <a href="mailto:info@infinityplay.rs" className="text-infinity-green-500 hover:underline">info@infinityplay.rs</a></p>
+            <p><strong>Bitrejt d.o.o.</strong>, koji pruža uslugu InfinityPlay Radio („mi", „nas" ili „naša kompanija"), je rukovalac ličnih podataka koje prikupljamo. Kontaktirajte nas na: <a href="mailto:support@infinityplay.rs" className="text-infinity-green-500 hover:underline">support@infinityplay.rs</a></p>
           </section>
 
           <section>
@@ -79,7 +79,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Prigovor</strong> — na određene vrste obrade</li>
               <li><strong>Povlačenje saglasnosti</strong> — u svakom trenutku</li>
             </ul>
-            <p className="mt-3">Zahteve upućujte na: <a href="mailto:info@infinityplay.rs" className="text-infinity-green-500 hover:underline">info@infinityplay.rs</a></p>
+            <p className="mt-3">Zahteve upućujte na: <a href="mailto:support@infinityplay.rs" className="text-infinity-green-500 hover:underline">support@infinityplay.rs</a></p>
           </section>
 
           <section>
@@ -99,7 +99,7 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">11. Kontakt</h2>
-            <p>Za sva pitanja vezana za privatnost: <a href="mailto:info@infinityplay.rs" className="text-infinity-green-500 hover:underline">info@infinityplay.rs</a></p>
+            <p>Za sva pitanja vezana za privatnost: <a href="mailto:support@infinityplay.rs" className="text-infinity-green-500 hover:underline">support@infinityplay.rs</a></p>
           </section>
         </div>
       </div>

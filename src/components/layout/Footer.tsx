@@ -85,8 +85,8 @@ export default function Footer() {
             <ul className="space-y-3">
               <li className="flex items-center space-x-2">
                 <Mail size={16} className="text-infinity-green-400" />
-                <a href="mailto:info@infinityplay.rs" className="text-gray-400 hover:text-infinity-green-400 transition-colors text-sm">
-                  info@infinityplay.rs
+                <a href="mailto:support@infinityplay.rs" className="text-gray-400 hover:text-infinity-green-400 transition-colors text-sm">
+                  support@infinityplay.rs
                 </a>
               </li>
               <li className="flex items-center space-x-2">
@@ -132,7 +132,7 @@ export default function Footer() {
         <div className="border-t border-infinity-dark-700 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-gray-400 text-sm">
-              © {currentYear} InfinityPlay Radio. Sva prava zadržana.
+              © {currentYear} InfinityPlay Radio (Bitrejt d.o.o.). Sva prava zadržana.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
               <Link to="/privacy-policy" className="text-gray-400 hover:text-infinity-green-400 transition-colors">Politika privatnosti</Link>

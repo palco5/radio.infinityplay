@@ -324,10 +324,10 @@ export default function UserDashboard() {
               <div>
                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Email</p>
                 <a
-                  href="mailto:info@infinityplay.rs"
+                  href="mailto:support@infinityplay.rs"
                   className="text-lg font-bold text-gray-900 dark:text-white hover:text-infinity-green-500 dark:hover:text-infinity-green-400 transition-colors"
                 >
-                  info@infinityplay.rs
+                  support@infinityplay.rs
                 </a>
               </div>
             </div>
@@ -338,7 +338,7 @@ export default function UserDashboard() {
                 Pogledaj Pakete
               </Button>
               <a
-                href="mailto:info@infinityplay.rs"
+                href="mailto:support@infinityplay.rs"
                 className="w-full py-3 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-center"
               >
                 Pošalji Email

@@ -181,7 +181,7 @@ export default function PaymentPage() {
             <div className="bg-white dark:bg-infinity-dark-800 rounded-xl p-4 border border-gray-100 dark:border-gray-700 inline-block text-left">
               <p className="text-sm font-bold text-gray-900 dark:text-white mb-2">Kontakt za informacije:</p>
               <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                <p>Email: <a href="mailto:info@infinityplay.rs" className="text-infinity-green-600 hover:underline">info@infinityplay.rs</a></p>
+                <p>Email: <a href="mailto:support@infinityplay.rs" className="text-infinity-green-600 hover:underline">support@infinityplay.rs</a></p>
               </div>
             </div>
           </div>

@@ -217,7 +217,7 @@ export default function PricingSection() {
           </p>
           <div className="bg-infinity-green-50 dark:bg-infinity-green-900/20 p-4 md:p-6 rounded-2xl border-2 border-infinity-green-500">
             <p className="text-base md:text-lg font-bold text-gray-900 dark:text-white mb-2">
-              Email: info@infinityplay.rs
+              Email: support@infinityplay.rs
             </p>
             <p className="text-sm md:text-base text-gray-600 dark:text-gray-400">
               Odgovaramo u roku od 24 sata
@@ -227,7 +227,7 @@ export default function PricingSection() {
             variant="primary"
             size="lg"
             fullWidth
-            onClick={() => window.location.href = `mailto:info@infinityplay.rs?subject=Upit za ${selectedPlan?.name}`}
+            onClick={() => window.location.href = `mailto:support@infinityplay.rs?subject=Upit za ${selectedPlan?.name}`}
           >
             Pošalji Email
           </Button>

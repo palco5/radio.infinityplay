@@ -52,7 +52,7 @@ export default function CookiePolicyPage() {
             <ul className="list-disc pl-6 mt-2 space-y-2">
               <li><strong>Baner pri prvoj poseti:</strong> Prikazujemo baner kojim možete prihvatiti ili odbiti neobavezne kolačiće.</li>
               <li><strong>Podešavanja pregledača:</strong> Možete blokirati ili obrisati kolačiće u podešavanjima vašeg pregledača (Chrome, Firefox, Safari, Edge). Napomena: blokiranje nužnih kolačića može narušiti funkcionisanje platforme.</li>
-              <li><strong>Brisanje podataka naloga:</strong> Putem zahteva na info@infinityplay.rs možete zahtevati brisanje svih podataka vezanih za vaš nalog.</li>
+              <li><strong>Brisanje podataka naloga:</strong> Putem zahteva na support@infinityplay.rs možete zahtevati brisanje svih podataka vezanih za vaš nalog.</li>
             </ul>
           </section>
 
@@ -79,7 +79,7 @@ export default function CookiePolicyPage() {
 
           <section>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">Kontakt</h2>
-            <p>Za pitanja o kolačićima: <a href="mailto:info@infinityplay.rs" className="text-infinity-green-500 hover:underline">info@infinityplay.rs</a></p>
+            <p>Za pitanja o kolačićima: <a href="mailto:support@infinityplay.rs" className="text-infinity-green-500 hover:underline">support@infinityplay.rs</a></p>
           </section>
         </div>
       </div>
