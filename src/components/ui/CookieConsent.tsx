@@ -39,11 +39,11 @@ export default function CookieConsent() {
             <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Koristimo kolačiće</p>
             <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
               Koristimo nužne kolačiće za funkcionisanje platforme i opcionalne za poboljšanje iskustva. Više informacija u{' '}
-              <a href="/#/cookie-policy" className="text-infinity-green-600 dark:text-infinity-green-400 hover:underline font-medium">
+              <a href="/cookie-policy" className="text-infinity-green-600 dark:text-infinity-green-400 hover:underline font-medium">
                 Politici kolačića
               </a>{' '}
               i{' '}
-              <a href="/#/privacy-policy" className="text-infinity-green-600 dark:text-infinity-green-400 hover:underline font-medium">
+              <a href="/privacy-policy" className="text-infinity-green-600 dark:text-infinity-green-400 hover:underline font-medium">
                 Politici privatnosti
               </a>.
             </p>

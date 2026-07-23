@@ -875,7 +875,7 @@ export default function AdminDashboard() {
                           <Activity className="text-yellow-600" size={18} />
                         </button>
                         <button
-                          onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/dashboard?adminView=${user.id}&t=${localStorage.getItem('auth_token') || ''}`, '_blank')}
+                          onClick={() => window.open(`${window.location.origin}/dashboard?adminView=${user.id}&t=${localStorage.getItem('auth_token') || ''}`, '_blank')}
                           className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
                           title="Otvori dashboard korisnika"
                         >
@@ -1031,7 +1031,7 @@ export default function AdminDashboard() {
                     <span className="text-[10px] font-medium">Preporuke</span>
                   </button>
                   <button
-                    onClick={() => window.open(`${window.location.origin}${window.location.pathname}#/dashboard?adminView=${user.id}&t=${localStorage.getItem('auth_token') || ''}`, '_blank')}
+                    onClick={() => window.open(`${window.location.origin}/dashboard?adminView=${user.id}&t=${localStorage.getItem('auth_token') || ''}`, '_blank')}
                     className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/10 text-blue-500 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors"
                   >
                     <ExternalLink size={16} />

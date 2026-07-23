@@ -89,7 +89,7 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">9. Kolačići</h2>
-            <p>Koristimo kolačiće za funkcionisanje platforme i poboljšanje iskustva. Više informacija: <a href="/#/cookie-policy" className="text-infinity-green-500 hover:underline">Politika kolačića</a>.</p>
+            <p>Koristimo kolačiće za funkcionisanje platforme i poboljšanje iskustva. Više informacija: <a href="/cookie-policy" className="text-infinity-green-500 hover:underline">Politika kolačića</a>.</p>
           </section>
 
           <section>

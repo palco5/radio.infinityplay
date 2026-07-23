@@ -239,7 +239,7 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
                         <span className="text-sm text-gray-600 dark:text-gray-400 leading-snug">
                             Prihvatam{' '}
                             <a
-                                href="/#/terms-of-service"
+                                href="/terms-of-service"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-infinity-green-600 hover:underline font-medium"
@@ -249,7 +249,7 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
                             </a>{' '}
                             i{' '}
                             <a
-                                href="/#/privacy-policy"
+                                href="/privacy-policy"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-infinity-green-600 hover:underline font-medium"
