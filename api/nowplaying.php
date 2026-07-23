@@ -53,11 +53,17 @@ if ($streamUrl) {
 // Regardless of where the raw title came from, look it up on iTunes for a
 // clean "Artist - Title" and reliable high-res cover art — raw stream titles
 // are often mangled ("(Official Lyrics Video 2025) (128kbit_AAC)" etc).
-$itunes = $title ? lookupItunes(cleanRawTitle($title)) : null;
+$cleanedTitle = $title ? cleanRawTitle($title) : '';
+$itunes = $cleanedTitle ? lookupItunes($cleanedTitle) : null;
+
 if ($itunes) {
     $title    = $itunes['title'];
     $coverart = $itunes['coverart'];
     $source   = 'itunes';
+} elseif ($cleanedTitle) {
+    // No iTunes match (common for local/regional folk tracks) — still show
+    // the cleaned text instead of the raw junk-laden stream title.
+    $title = $cleanedTitle;
 }
 
 echo json_encode(array_merge([
@@ -142,23 +148,58 @@ function cleanRawTitle($raw)
 }
 
 // Look up a cleaned "Artist - Title" string on the iTunes Search API to get
-// canonical naming + reliable cover art. Returns null if no match.
-function lookupItunes($term)
+// canonical naming + reliable cover art. Returns null if no (trustworthy) match.
+//
+// Tries the Serbian storefront first — a lot of what plays on these stations
+// is regional folk/pop that the default US catalog doesn't carry — then
+// falls back to the default (US/international) catalog. If both come back
+// empty, retries once more with short 1-2 letter glue words (conjunctions
+// like "i"/"u"/"a") stripped out, since they occasionally throw off iTunes'
+// ranking for otherwise-exact regional titles.
+function lookupItunes($cleanedTitle)
 {
-    $term = trim($term);
+    $cleanedTitle = trim($cleanedTitle);
+    if ($cleanedTitle === '') {
+        return null;
+    }
+
+    $result = itunesSearchOnce($cleanedTitle, 'rs') ?? itunesSearchOnce($cleanedTitle, null);
+    if ($result) {
+        return $result;
+    }
+
+    $stripped = preg_replace('/\b[a-zA-ZčćžšđČĆŽŠĐ]{1,2}\b/u', ' ', $cleanedTitle);
+    $stripped = trim(preg_replace('/\s+/', ' ', $stripped));
+    if ($stripped !== '' && $stripped !== $cleanedTitle) {
+        return itunesSearchOnce($stripped, 'rs') ?? itunesSearchOnce($stripped, null);
+    }
+
+    return null;
+}
+
+// Single iTunes Search API request + result validation. Returns
+// ['title' => ..., 'coverart' => ...] or null if no result / result is a
+// bad match for $term (see itunesResultLooksValid).
+function itunesSearchOnce($term, $country)
+{
     if ($term === '') {
         return null;
     }
 
-    $url = 'https://itunes.apple.com/search?' . http_build_query([
+    $params = [
         'term'   => $term,
         'media'  => 'music',
         'entity' => 'song',
         'limit'  => 1,
-    ]);
+    ];
+    if ($country) {
+        $params['country'] = $country;
+    }
+
+    $url = 'https://itunes.apple.com/search?' . http_build_query($params);
 
     $context = stream_context_create([
-        'http' => ['timeout' => 4, 'ignore_errors' => true],
+        'http' => ['timeout' => 3, 'ignore_errors' => true],
     ]);
 
     $response = @file_get_contents($url, false, $context);
@@ -171,8 +212,12 @@ function lookupItunes($term)
         return null;
     }
 
-    $result   = $data['results'][0];
-    $artwork  = $result['artworkUrl100'] ?? null;
+    $result = $data['results'][0];
+    if (!itunesResultLooksValid($term, $result)) {
+        return null;
+    }
+
+    $artwork = $result['artworkUrl100'] ?? null;
     if ($artwork) {
         $artwork = str_replace('100x100bb', '600x600bb', $artwork);
     }
@@ -181,6 +226,37 @@ function lookupItunes($term)
         'title'    => $result['artistName'] . ' - ' . $result['trackName'],
         'coverart' => $artwork,
     ];
+}
+
+// iTunes' full-text search is fuzzy enough to return a completely unrelated
+// track for garbage input (e.g. a DJ mix name). Guard against that by
+// requiring at least half of the meaningful (3+ letter) words from our
+// search term to actually appear in the candidate's artist/track name.
+function itunesResultLooksValid($term, $result)
+{
+    $queryWords = normalizeSearchWords($term);
+    if (!$queryWords) {
+        return true;
+    }
+
+    $resultText = implode(' ', normalizeSearchWords($result['artistName'] . ' ' . $result['trackName']));
+
+    $matched = 0;
+    foreach ($queryWords as $word) {
+        if (mb_strpos($resultText, $word) !== false) {
+            $matched++;
+        }
+    }
+
+    return ($matched / count($queryWords)) >= 0.5;
+}
+
+function normalizeSearchWords($s)
+{
+    $s = mb_strtolower($s, 'UTF-8');
+    $s = preg_replace('/[^\p{L}\p{N}\s]/u', ' ', $s);
+    $words = preg_split('/\s+/u', trim($s));
+    return array_values(array_filter($words, fn($w) => mb_strlen($w) >= 3));
 }
 
 function getIcyTitle($url)
