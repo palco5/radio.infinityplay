@@ -461,19 +461,20 @@ export default function UserDashboard() {
         </div>
       )}
       <nav className="bg-white dark:bg-infinity-dark-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16 md:h-20">
+        {/* Mobile header (phone only) — unchanged */}
+        <div className="container mx-auto px-4 md:hidden">
+          <div className="flex items-center justify-between h-16">
             <button
               onClick={() => { pause(); navigate('/'); }}
-              className="flex items-center space-x-2 md:space-x-3 hover:opacity-80 transition-opacity"
+              className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
             >
-              <img src="logo.png" alt="InfinityPlay" className="h-8 md:h-10 w-auto" />
-              <span className="text-lg md:text-xl font-serif font-bold text-gray-900 dark:text-white">
+              <img src="logo.png" alt="InfinityPlay" className="h-8 w-auto" />
+              <span className="text-lg font-serif font-bold text-gray-900 dark:text-white">
                 Dashboard
               </span>
             </button>
 
-            <div className="flex items-center space-x-2 md:space-x-4">
+            <div className="flex items-center space-x-2">
               <button
                 onClick={toggleTheme}
                 className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors"
@@ -487,51 +488,92 @@ export default function UserDashboard() {
 
               <button
                 onClick={() => !adminViewUserId && setShowProfileModal(true)}
-                className={`flex items-center space-x-2 md:space-x-3 px-2 md:px-4 py-1.5 md:py-2 bg-gray-100 dark:bg-infinity-dark-700 rounded-full transition-colors ${adminViewUserId ? 'cursor-default' : 'hover:bg-gray-200 dark:hover:bg-infinity-dark-600'}`}
+                className={`flex items-center space-x-2 px-2 py-1.5 bg-gray-100 dark:bg-infinity-dark-700 rounded-full transition-colors ${adminViewUserId ? 'cursor-default' : 'hover:bg-gray-200 dark:hover:bg-infinity-dark-600'}`}
               >
                 {activeProfile?.avatar_url ? (
-                  <span className="text-xl md:text-2xl">{activeProfile.avatar_url}</span>
+                  <span className="text-xl">{activeProfile.avatar_url}</span>
                 ) : (
-                  <User size={18} className="text-gray-600 dark:text-gray-400 md:w-5 md:h-5" />
+                  <User size={18} className="text-gray-600 dark:text-gray-400" />
                 )}
-                <span className="text-xs md:text-sm font-medium text-gray-900 dark:text-white hidden sm:inline">
+                <span className="text-xs font-medium text-gray-900 dark:text-white hidden sm:inline">
                   {activeProfile?.venue_name || activeProfile?.display_name || user?.email?.split('@')[0]}
                 </span>
               </button>
 
-              <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:flex">
-                <LogOut size={16} className="mr-1" />
-                Odjavi se
-              </Button>
-              {user?.email === 'darkospira@gmail.com' && (
-                <button
-                  onClick={() => setShowDashboardSelector(true)}
-                  className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-full text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-                  title="Admin Panel"
-                >
-                  <Shield size={15} />
-                  <span>Admin</span>
-                </button>
-              )}
               <button
                 onClick={handleSignOut}
-                className="md:hidden p-2 rounded-full hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors"
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors"
               >
                 <LogOut size={18} className="text-gray-700 dark:text-gray-300" />
               </button>
               {user?.email === 'darkospira@gmail.com' && (
                 <button
                   onClick={() => setShowDashboardSelector(true)}
-                  className="md:hidden p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   title="Admin Panel"
                 >
                   <Shield size={18} className="text-red-600 dark:text-red-400" />
                 </button>
               )}
             </div>
-          </div >
-        </div >
-      </nav >
+          </div>
+        </div>
+
+        {/* Tablet/desktop header */}
+        <div className="hidden md:block container mx-auto px-4">
+          <div className="grid grid-cols-3 items-center h-20">
+            <div className="flex items-center space-x-4 justify-self-start">
+              <button
+                onClick={() => !adminViewUserId && setShowProfileModal(true)}
+                className={`text-base font-semibold text-gray-900 dark:text-white transition-opacity ${adminViewUserId ? 'cursor-default' : 'hover:opacity-70'}`}
+              >
+                {activeProfile?.venue_name || activeProfile?.display_name || user?.email?.split('@')[0]}
+              </button>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                className="text-base text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                Podešavanja
+              </button>
+            </div>
+
+            <button
+              onClick={() => { pause(); navigate('/'); }}
+              className="justify-self-center hover:opacity-80 transition-opacity"
+            >
+              <img src="logo.png" alt="InfinityPlay" className="h-10 w-auto" />
+            </button>
+
+            <div className="flex items-center space-x-4 justify-self-end">
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors"
+              >
+                {theme === 'dark' ? (
+                  <Sun className="text-infinity-green-500" size={20} />
+                ) : (
+                  <Moon className="text-gray-700" size={20} />
+                )}
+              </button>
+              {user?.email === 'darkospira@gmail.com' && (
+                <button
+                  onClick={() => setShowDashboardSelector(true)}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-full text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                  title="Admin Panel"
+                >
+                  <Shield size={15} />
+                  <span>Admin</span>
+                </button>
+              )}
+              <Button variant="ghost" size="sm" onClick={handleSignOut}>
+                <LogOut size={16} className="mr-1" />
+                Odjavi se
+              </Button>
+            </div>
+          </div>
+        </div>
+      </nav>
 
       <div className="container mx-auto px-4 py-4 md:py-8">
         <div className="mb-4 md:mb-6">
