@@ -261,62 +261,39 @@ function normalizeSearchWords($s)
 
 function getIcyTitle($url)
 {
-    $parsed = parse_url($url);
-    $host   = $parsed['host'];
-    $port   = isset($parsed['port']) ? (int)$parsed['port'] : ($parsed['scheme'] === 'https' ? 443 : 80);
-    $path   = isset($parsed['path']) ? $parsed['path'] : '/';
-    $isHttps = $parsed['scheme'] === 'https';
-
-    // Use stream_socket_client so we can pass an SSL context
+    // Use the http(s):// stream wrapper (fopen), not a raw stream_socket_client
+    // connection — some hosts (this one included) block outbound raw sockets
+    // to non-standard ports at the OS/security-module level while still
+    // allowing normal HTTP(S) requests through the standard wrapper.
     $context = stream_context_create([
+        'http' => [
+            'method'  => 'GET',
+            'header'  => "Icy-MetaData: 1\r\nUser-Agent: InfinityPlay-NowPlaying/1.0\r\n",
+            'timeout' => 8,
+        ],
         'ssl' => [
             'verify_peer'      => false,
             'verify_peer_name' => false,
         ],
     ]);
 
-    $target = ($isHttps ? 'ssl://' : 'tcp://') . $host . ':' . $port;
-    $fp = @stream_socket_client($target, $errno, $errstr, 8, STREAM_CLIENT_CONNECT, $context);
-
+    $fp = @fopen($url, 'r', false, $context);
     if (!$fp) {
-        if (isset($_GET['debug'])) {
-            echo json_encode(['debug' => "connect failed: errno=$errno errstr=$errstr target=$target"]);
-            exit;
-        }
         return '';
     }
 
     stream_set_timeout($fp, 8);
 
-    // Send HTTP/1.0 request with Icy-MetaData header
-    $request  = "GET {$path} HTTP/1.0\r\n";
-    $request .= "Host: {$host}\r\n";
-    $request .= "Icy-MetaData: 1\r\n";
-    $request .= "User-Agent: InfinityPlay-NowPlaying/1.0\r\n";
-    $request .= "Connection: close\r\n\r\n";
-    fwrite($fp, $request);
-
-    // Read response headers
     $metaint    = 0;
     $statusCode = 0;
-
-    while (!feof($fp)) {
-        $line = fgets($fp, 1024);
-        if ($line === false) break;
-        $trimmed = trim($line);
-        if ($trimmed === '') break; // blank line = end of headers
-
-        if (preg_match('#^HTTP/[\d.]+ (\d+)#i', $trimmed, $m)) {
+    $meta = stream_get_meta_data($fp);
+    foreach ($meta['wrapper_data'] ?? [] as $h) {
+        if (preg_match('#^HTTP/[\d.]+ (\d+)#i', $h, $m)) {
             $statusCode = (int)$m[1];
         }
-        if (stripos($trimmed, 'icy-metaint:') !== false) {
-            $metaint = (int)trim(preg_replace('/^icy-metaint:\s*/i', '', $trimmed));
+        if (stripos($h, 'icy-metaint:') !== false) {
+            $metaint = (int)trim(preg_replace('/^icy-metaint:\s*/i', '', $h));
         }
-    }
-
-    if (isset($_GET['debug'])) {
-        echo json_encode(['debug' => "connected ok, statusCode=$statusCode metaint=$metaint"]);
-        exit;
     }
 
     if ($metaint <= 0 || ($statusCode > 0 && $statusCode >= 400)) {
