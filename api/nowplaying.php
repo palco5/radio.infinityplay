@@ -344,20 +344,25 @@ function getIcyTitle($url)
 }
 
 // Reliably read exactly $length bytes from a (possibly SSL-wrapped) stream
-// socket, retrying briefly on empty reads instead of trusting feof() alone.
-function readIcyBytes($fp, $length)
+// socket, retrying on empty reads instead of trusting feof() alone. PHP's
+// ssl:// wrapper routinely returns an empty string from fread() with
+// feof() still false — either a TLS record boundary that produced no new
+// application bytes on this call, or a live Icecast source that only
+// bursts audio every second or so — so this needs real patience (bounded
+// by a wall-clock deadline, not a fixed retry count) rather than a couple
+// of quick retries.
+function readIcyBytes($fp, $length, $timeoutSeconds = 8)
 {
     $data = '';
-    $emptyReads = 0;
+    $deadline = microtime(true) + $timeoutSeconds;
     while (strlen($data) < $length) {
         $chunk = fread($fp, $length - strlen($data));
         if ($chunk === false || $chunk === '') {
             if (feof($fp)) break;
-            if (++$emptyReads > 20) break;
-            usleep(10000);
+            if (microtime(true) > $deadline) break;
+            usleep(5000);
             continue;
         }
-        $emptyReads = 0;
         $data .= $chunk;
     }
     return $data;
