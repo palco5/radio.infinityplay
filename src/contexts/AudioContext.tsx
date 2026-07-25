@@ -397,7 +397,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       if (!currentDeck.paused) currentDeck.pause();
 
     } catch (error) {
-      // Rollback UI state if play() fails
+      // A pause() call while nextDeck.play() is still pending makes the browser
+      // reject that play() promise with an AbortError — that's an expected,
+      // benign interruption (the user just paused quickly), not a real
+      // playback failure, so don't wipe the selected station over it.
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+      // Rollback UI state if play() genuinely fails (bad stream, network, etc.)
       setIsPlaying(false);
       isPlayingRef.current = false;
       setCurrentStation(null);
