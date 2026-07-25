@@ -381,7 +381,14 @@ export default function DJManagerOverlay({ isOpen, onClose, remoteSessions, send
   const handlePlayLocal = (immediate: boolean) => {
     if (!selected) return;
     const song = buildSongInfo(selected);
-    if (immediate) playSong(song); else queueSong(song);
+    if (immediate) {
+      playSong(song);
+      // Starting playback now is the point of opening DJ Manager — get out
+      // of the way so the hero player (with its own search + queue) takes over.
+      onClose();
+    } else {
+      queueSong(song);
+    }
     setSelected(null); setQuery(''); setResults([]);
   };
 

@@ -226,6 +226,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
   const title = mode === 'song' ? (currentSong?.title ?? '') : (nowPlayingTitle || currentStation?.genre || '');
   const subtitle = mode === 'song' ? (currentSong?.artist ?? '') : (currentStation?.name ?? '');
   const showSkip = mode === 'song' && songQueue.length > 0;
+  const isLoadingSong = mode === 'song' && songState === 'loading';
 
   const handleTogglePlay = () => {
     if (mode === 'song') {
@@ -266,6 +267,11 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
               <NowPlayingIndicator />
             </div>
           )}
+          {isLoadingSong && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+              <div className="w-7 h-7 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
         </div>
 
         <h2
@@ -275,10 +281,10 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
           {title || 'Nema podataka'}
         </h2>
         <p
-          className="text-white/70 text-sm md:text-base truncate w-full mb-5"
+          className={`text-sm md:text-base truncate w-full mb-5 ${isLoadingSong ? 'text-infinity-green-400 animate-pulse' : 'text-white/70'}`}
           style={{ animation: 'hero-text-in 0.5s ease-out 0.24s both' }}
         >
-          {subtitle}
+          {isLoadingSong ? 'Učitava se...' : subtitle}
         </p>
 
         <div
@@ -299,9 +305,12 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
 
           <button
             onClick={handleTogglePlay}
-            className="w-14 h-14 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-lg"
+            disabled={isLoadingSong}
+            className="w-14 h-14 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-lg disabled:opacity-70 disabled:hover:scale-100"
           >
-            {isPlayingNow ? (
+            {isLoadingSong ? (
+              <div className="w-6 h-6 border-2 border-gray-900/70 border-t-transparent rounded-full animate-spin" />
+            ) : isPlayingNow ? (
               <Pause className="text-gray-900" size={26} />
             ) : (
               <Play className="text-gray-900 ml-1" size={26} fill="currentColor" />
