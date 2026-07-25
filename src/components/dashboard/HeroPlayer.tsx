@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Play, Pause, Volume2, VolumeX, SkipForward, Radio as RadioIcon } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, SkipForward, Radio as RadioIcon, X } from 'lucide-react';
 import { useAudio } from '../../contexts/AudioContext';
 import { useSongPlayer } from '../../contexts/SongPlayerContext';
 import NowPlayingIndicator from '../player/NowPlayingIndicator';
+import PlaylistPanel from './PlaylistPanel';
 
 interface HeroPlayerProps {
   heroSlotRef: RefObject<HTMLDivElement | null>;
@@ -45,7 +46,7 @@ function heroHeight() {
 // sequence — the old station flies back down, then the new one flies up.
 export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOriginEl, onHiddenStationChange }: HeroPlayerProps) {
   const { currentStation, isPlaying, pause, playStation, volume, setVolume, nowPlayingTitle, nowPlayingCover } = useAudio();
-  const { songState, currentSong, pauseSong, resumeSong, skipSong, songQueue } = useSongPlayer();
+  const { songState, currentSong, pauseSong, resumeSong, skipSong, stopSong, songQueue } = useSongPlayer();
 
   const isSongActiveNow = songState === 'playing' || songState === 'paused' || songState === 'loading';
   const mode: 'song' | 'radio' | 'none' = isSongActiveNow ? 'song' : currentStation ? 'radio' : 'none';
@@ -227,8 +228,10 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
     }
   };
 
-  const bigContent = (
-    <>
+  const isPlaylistMode = mode === 'song';
+
+  const nowPlayingSection = (
+    <div className="relative h-full flex-1 min-w-0 min-h-0 overflow-hidden">
       {cover && (
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -259,13 +262,13 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
         </div>
 
         <h2
-          className="text-white font-serif font-bold text-lg md:text-xl truncate max-w-[80vw] mb-1"
+          className="text-white font-serif font-bold text-lg md:text-xl truncate w-full mb-1"
           style={{ animation: 'hero-text-in 0.5s ease-out 0.16s both' }}
         >
           {title || 'Nema podataka'}
         </h2>
         <p
-          className="text-white/70 text-sm md:text-base truncate max-w-[80vw] mb-5"
+          className="text-white/70 text-sm md:text-base truncate w-full mb-5"
           style={{ animation: 'hero-text-in 0.5s ease-out 0.24s both' }}
         >
           {subtitle}
@@ -307,7 +310,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 
   const isGeometryAnimating = phase === 'opening' || phase === 'closing';
@@ -318,10 +321,31 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
         {phase === 'expanded' && (
           <div
             ref={staticBoxRef}
-            className={`relative w-full ${EXPANDED_HEIGHT} rounded-3xl overflow-hidden bg-gray-900 mb-6 md:mb-8`}
+            className={`relative w-full rounded-3xl overflow-hidden bg-gray-900 mb-6 md:mb-8 transition-[height] duration-300 ease-out ${
+              isPlaylistMode ? 'h-[560px] md:h-[420px]' : EXPANDED_HEIGHT
+            }`}
             style={{ boxShadow: SETTLED_SHADOW }}
           >
-            {contentReady && bigContent}
+            {contentReady && (
+              <div className="absolute inset-0 flex flex-col md:flex-row">
+                {nowPlayingSection}
+                {isPlaylistMode && (
+                  <div className="relative w-full md:w-72 h-56 md:h-full flex-shrink-0 border-t md:border-t-0 md:border-l border-white/10 bg-black/25">
+                    <PlaylistPanel />
+                  </div>
+                )}
+              </div>
+            )}
+            {isPlaylistMode && (
+              <button
+                onClick={stopSong}
+                title="Isključi plejlistu"
+                className="absolute top-3 left-3 z-10 flex items-center gap-1.5 text-white/70 hover:text-white bg-black/30 hover:bg-black/50 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+              >
+                <X size={14} />
+                Isključi plejlistu
+              </button>
+            )}
           </div>
         )}
       </div>
