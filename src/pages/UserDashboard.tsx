@@ -63,8 +63,6 @@ export default function UserDashboard() {
   const [isDJOpen, setIsDJOpen] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const djButtonRef = useRef<HTMLButtonElement>(null);
-  const heroSlotRef = useRef<HTMLDivElement>(null);
-  const stationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const { songState, currentSong, stopSong, skipSong, setQueuedAction, pauseSong, resumeSong, playSong, queueSong, songQueue, postRadioQueue, savedPlaylist, saveCurrentQueueAs, clearSavedPlaylist, scheduleSwitch, resumeSavedPlaylist } = useSongPlayer();
 
@@ -421,11 +419,6 @@ export default function UserDashboard() {
     }
   };
 
-  const getStationOriginEl = () => {
-    const id = currentStation?.id;
-    return id ? stationRefs.current.get(id) ?? null : null;
-  };
-  const getDjOriginEl = () => djButtonRef.current;
 
   const handleStationClick = (station: RadioStation) => {
     if (songState !== 'idle') {
@@ -584,15 +577,12 @@ export default function UserDashboard() {
           <TrialStatus />
         </div>
 
-        <div ref={heroSlotRef} />
+        <HeroPlayer />
 
         <Card>
           {/* 1. Moj Radio — na vrhu */}
           {mojRadioStation && (
-            <div
-              className="mb-4"
-              ref={(el) => { if (el) stationRefs.current.set(mojRadioStation.id, el); else stationRefs.current.delete(mojRadioStation.id); }}
-            >
+            <div className="mb-4">
               <MojRadioCard
                 isPlaying={isMojRadioPlaying}
                 onClick={handleMojRadioClick}
@@ -777,16 +767,12 @@ export default function UserDashboard() {
                   clickedStationId === station.id;
 
                 return (
-                  <div
+                  <StationCard
                     key={station.id}
-                    ref={(el) => { if (el) stationRefs.current.set(station.id, el); else stationRefs.current.delete(station.id); }}
-                  >
-                    <StationCard
-                      station={station}
-                      isCurrentlyPlaying={isCurrentlyPlaying}
-                      onClick={handleStationClick}
-                    />
-                  </div>
+                    station={station}
+                    isCurrentlyPlaying={isCurrentlyPlaying}
+                    onClick={handleStationClick}
+                  />
                 );
               })}
             </div>
@@ -815,12 +801,6 @@ export default function UserDashboard() {
         remoteSessions={remoteSessions}
         sendRemoteCommand={sendRemoteCommand}
         buttonRef={djButtonRef}
-      />
-
-      <HeroPlayer
-        heroSlotRef={heroSlotRef}
-        getStationOriginEl={getStationOriginEl}
-        getDjOriginEl={getDjOriginEl}
       />
 
       {/* Station intercept modal — shown when song is playing and user picks a station */}
