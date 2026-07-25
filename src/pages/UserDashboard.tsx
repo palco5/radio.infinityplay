@@ -594,7 +594,7 @@ export default function UserDashboard() {
           {/* 1. Moj Radio — na vrhu */}
           {mojRadioStation && (
             <div
-              className={`mb-4 transition-opacity duration-200 ${hiddenStationId === mojRadioStation.id ? 'opacity-0 pointer-events-none' : ''}`}
+              className="mb-4"
               ref={(el) => { if (el) stationRefs.current.set(mojRadioStation.id, el); else stationRefs.current.delete(mojRadioStation.id); }}
             >
               <MojRadioCard

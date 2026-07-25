@@ -243,7 +243,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
 
       <div className="relative h-full flex flex-col items-center justify-center px-6 py-6 text-center">
         <div
-          className="w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden shadow-xl bg-gradient-infinity flex items-center justify-center mb-4 flex-shrink-0"
+          className="relative w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden shadow-xl bg-gradient-infinity flex items-center justify-center mb-4 flex-shrink-0"
           style={{ animation: 'hero-cover-in 0.6s cubic-bezier(0.34,1.56,0.64,1) both' }}
         >
           {cover ? (
@@ -251,17 +251,19 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
           ) : (
             <RadioIcon className="text-white" size={48} />
           )}
+          {isPlayingNow && (
+            <div className="absolute bottom-1.5 right-1.5 bg-black/50 backdrop-blur-sm rounded-full p-1.5">
+              <NowPlayingIndicator />
+            </div>
+          )}
         </div>
 
-        <div
-          className="flex items-center gap-2 mb-1 max-w-full"
+        <h2
+          className="text-white font-serif font-bold text-lg md:text-xl truncate max-w-[80vw] mb-1"
           style={{ animation: 'hero-text-in 0.5s ease-out 0.16s both' }}
         >
-          <h2 className="text-white font-serif font-bold text-lg md:text-xl truncate max-w-[80vw]">
-            {title || 'Nema podataka'}
-          </h2>
-          {isPlayingNow && <NowPlayingIndicator />}
-        </div>
+          {title || 'Nema podataka'}
+        </h2>
         <p
           className="text-white/70 text-sm md:text-base truncate max-w-[80vw] mb-5"
           style={{ animation: 'hero-text-in 0.5s ease-out 0.24s both' }}
