@@ -585,7 +585,11 @@ export default function UserDashboard() {
           <TrialStatus />
         </div>
 
-        <div ref={heroSlotRef} />
+        <HeroPlayer
+          heroSlotRef={heroSlotRef}
+          getStationOriginEl={getStationOriginEl}
+          getDjOriginEl={getDjOriginEl}
+        />
 
         <Card>
           {/* 1. Moj Radio — na vrhu */}
@@ -816,12 +820,6 @@ export default function UserDashboard() {
         remoteSessions={remoteSessions}
         sendRemoteCommand={sendRemoteCommand}
         buttonRef={djButtonRef}
-      />
-
-      <HeroPlayer
-        heroSlotRef={heroSlotRef}
-        getStationOriginEl={getStationOriginEl}
-        getDjOriginEl={getDjOriginEl}
       />
 
       {/* Station intercept modal — shown when song is playing and user picks a station */}
