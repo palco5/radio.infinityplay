@@ -61,11 +61,6 @@
   100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes hero-cover-in {
   0%   { opacity: 0; transform: scale(0.75) rotate(-4deg); }
   60%  { opacity: 1; transform: scale(1.06) rotate(1deg); }
@@ -80,14 +75,4 @@
 @keyframes hero-bg-in {
   from { opacity: 0; transform: scale(1.15); }
   to   { opacity: 1; transform: scale(1.3); }
-}
-
-@keyframes hero-idle-pulse {
-  0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.06); }
-}
-
-@keyframes hero-idle-ring {
-  0%   { transform: scale(1);   opacity: 0.5; }
-  100% { transform: scale(1.9); opacity: 0; }
 }

@@ -1,17 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { Play, Pause, Volume2, VolumeX, SkipForward, Radio as RadioIcon } from 'lucide-react';
 import { useAudio } from '../../contexts/AudioContext';
 import { useSongPlayer } from '../../contexts/SongPlayerContext';
 import NowPlayingIndicator from '../player/NowPlayingIndicator';
 
-const PAUSE_GRACE_MS = 10000;
+interface HeroPlayerProps {
+  heroSlotRef: RefObject<HTMLDivElement | null>;
+  getStationOriginEl: () => HTMLElement | null;
+  getDjOriginEl: () => HTMLElement | null;
+}
 
-// Static "now playing" hero — always occupies the top slot where the old
-// analytics/quick-access cards used to be. The box itself never moves; only
-// its content changes, with a staggered pop-in animation each time playback
-// starts (achieved by actually mounting/unmounting the content so the CSS
-// keyframes replay every time, rather than just toggling opacity).
-export default function HeroPlayer() {
+type Phase = 'closed' | 'opening' | 'expanded' | 'closing';
+
+interface Rect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+const PAUSE_GRACE_MS = 10000;
+const ANIM_MS = 480;
+
+function heroHeight() {
+  return window.innerWidth < 768 ? 300 : 380;
+}
+
+// Only exists in the DOM while something is playing (or was just paused, inside
+// the grace window). Grows from the clicked card up into the hero slot via a
+// FLIP-style rect animation, then pops its content in with a staggered
+// entrance. Reverses (content out, box shrinks back down to the origin card)
+// on pause + 10s grace, and unmounts entirely — no reserved idle space.
+export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOriginEl }: HeroPlayerProps) {
   const { currentStation, isPlaying, pause, playStation, volume, setVolume, nowPlayingTitle, nowPlayingCover } = useAudio();
   const { songState, currentSong, pauseSong, resumeSong, skipSong, songQueue } = useSongPlayer();
 
@@ -19,15 +40,24 @@ export default function HeroPlayer() {
   const mode: 'song' | 'radio' | 'none' = isSongActiveNow ? 'song' : currentStation ? 'radio' : 'none';
   const isPlayingNow = mode === 'song' ? songState === 'playing' : mode === 'radio' ? isPlaying : false;
 
+  const [phase, setPhase] = useState<Phase>('closed');
+  const [rect, setRect] = useState<Rect | null>(null);
+  const [radius, setRadius] = useState(16);
+  const [contentReady, setContentReady] = useState(false);
   const [forceClosed, setForceClosed] = useState(false);
+
   const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevActiveRef = useRef(false);
+  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const active = mode !== 'none' && !forceClosed;
 
   // Resuming/starting playback always cancels any pending revert-to-idle.
   useEffect(() => {
     if (isPlayingNow) setForceClosed(false);
   }, [isPlayingNow]);
 
-  // 10s pause grace — after this, the hero reverts to its idle placeholder.
+  // 10s pause grace — after this, the hero shrinks back into the grid.
   useEffect(() => {
     if (mode !== 'none' && !isPlayingNow && !(mode === 'song' && songState === 'loading')) {
       pauseTimerRef.current = setTimeout(() => setForceClosed(true), PAUSE_GRACE_MS);
@@ -35,7 +65,90 @@ export default function HeroPlayer() {
     }
   }, [mode, isPlayingNow, songState]);
 
-  const active = mode !== 'none' && !forceClosed;
+  const clearTimeouts = () => {
+    timeoutsRef.current.forEach(clearTimeout);
+    timeoutsRef.current = [];
+  };
+  const after = (ms: number, fn: () => void) => {
+    timeoutsRef.current.push(setTimeout(fn, ms));
+  };
+
+  const targetRect = (): Rect => {
+    const slot = heroSlotRef.current;
+    const r = slot?.getBoundingClientRect();
+    const scrollY = window.scrollY;
+    return {
+      top: r ? r.top + scrollY : 96,
+      left: r ? r.left : 16,
+      width: r ? r.width : window.innerWidth - 32,
+      height: heroHeight(),
+    };
+  };
+
+  const originEl = (): HTMLElement | null => {
+    return mode === 'song' ? getDjOriginEl() : getStationOriginEl();
+  };
+
+  // Open (grow) / close (shrink) transitions
+  useEffect(() => {
+    if (active && !prevActiveRef.current) {
+      clearTimeouts();
+      const fromEl = originEl();
+      const from = fromEl?.getBoundingClientRect();
+      const target = targetRect();
+
+      if (from) {
+        setRect({ top: from.top, left: from.left, width: from.width, height: from.height });
+        setRadius(20);
+      } else {
+        // No known origin — fade/scale in from roughly the target position.
+        setRect({ top: target.top + 24, left: target.left, width: target.width, height: target.height * 0.6 });
+        setRadius(24);
+      }
+      setContentReady(false);
+      setPhase('opening');
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      after(20, () => {
+        setRect(target);
+        setRadius(28);
+      });
+      after(ANIM_MS, () => setPhase('expanded'));
+      after(ANIM_MS - 160, () => setContentReady(true));
+    } else if (!active && prevActiveRef.current) {
+      clearTimeouts();
+      const toEl = originEl();
+      const from = targetRect();
+      setRect(from);
+      setContentReady(false);
+      setPhase('closing');
+
+      if (toEl) {
+        const current = toEl.getBoundingClientRect();
+        // scrollIntoView({block:'center'}) will settle so the element's vertical
+        // center matches the viewport's vertical center — compute that final
+        // position analytically instead of re-measuring mid-scroll (which would
+        // race the smooth-scroll animation and read a stale rect).
+        const finalTop = window.innerHeight / 2 - current.height / 2;
+        toEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        after(20, () => {
+          setRect({ top: finalTop, left: current.left, width: current.width, height: current.height });
+          setRadius(20);
+        });
+      } else {
+        after(20, () => {
+          setRect({ top: from.top + 24, left: from.left, width: from.width, height: from.height * 0.6 });
+        });
+      }
+      after(ANIM_MS, () => { setPhase('closed'); setRect(null); });
+    }
+    prevActiveRef.current = active;
+  }, [active]);
+
+  useEffect(() => () => clearTimeouts(), []);
+
+  if (phase === 'closed') return null;
 
   const cover = mode === 'song' ? currentSong?.artwork ?? null : nowPlayingCover;
   const title = mode === 'song' ? (currentSong?.title ?? '') : (nowPlayingTitle || currentStation?.genre || '');
@@ -50,35 +163,36 @@ export default function HeroPlayer() {
     }
   };
 
-  return (
-    <div className="relative w-full h-[280px] md:h-[360px] rounded-3xl overflow-hidden mb-6 md:mb-8 shadow-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-infinity-dark-800 dark:to-infinity-dark-900">
-      {!active ? (
-        // ── Idle frame ──────────────────────────────────────────────────
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-          <div className="relative flex items-center justify-center w-20 h-20">
-            <span
-              className="absolute inset-0 rounded-full border-2 border-infinity-green-400/60"
-              style={{ animation: 'hero-idle-ring 2.4s ease-out infinite' }}
-            />
-            <span
-              className="absolute inset-0 rounded-full border-2 border-infinity-green-400/60"
-              style={{ animation: 'hero-idle-ring 2.4s ease-out infinite', animationDelay: '1.2s' }}
-            />
-            <div
-              className="relative w-16 h-16 rounded-2xl bg-gradient-infinity flex items-center justify-center shadow-glow-green"
-              style={{ animation: 'hero-idle-pulse 2.4s ease-in-out infinite' }}
-            >
-              <RadioIcon className="text-white" size={26} />
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="text-gray-700 dark:text-gray-200 font-serif font-bold text-base md:text-lg">Spreman za muziku</p>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Izaberi stanicu ispod da počneš</p>
+  const isGeometryAnimating = phase === 'opening' || phase === 'closing';
+  const showBigContent = phase === 'expanded' && contentReady;
+
+  const node = (
+    <div
+      className="fixed z-40 overflow-hidden shadow-2xl bg-gray-900"
+      style={{
+        top: rect?.top ?? 0,
+        left: rect?.left ?? 0,
+        width: rect?.width ?? 0,
+        height: rect?.height ?? 0,
+        borderRadius: radius,
+        transition: isGeometryAnimating || phase === 'expanded'
+          ? `top ${ANIM_MS}ms cubic-bezier(0.4,0,0.2,1), left ${ANIM_MS}ms cubic-bezier(0.4,0,0.2,1), width ${ANIM_MS}ms cubic-bezier(0.4,0,0.2,1), height ${ANIM_MS}ms cubic-bezier(0.4,0,0.2,1), border-radius ${ANIM_MS}ms cubic-bezier(0.4,0,0.2,1)`
+          : 'none',
+      }}
+    >
+      {/* Small (collapsed / mid-animation) preview */}
+      {!showBigContent && (
+        <div className="absolute inset-0 flex items-center gap-3 px-4">
+          <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-gradient-infinity flex items-center justify-center">
+            {cover ? <img src={cover} alt="" className="w-full h-full object-cover" /> : <RadioIcon className="text-white" size={22} />}
           </div>
         </div>
-      ) : (
-        // ── Now playing ─────────────────────────────────────────────────
-        <div className="absolute inset-0">
+      )}
+
+      {/* Full hero content — mounted fresh each time we settle into place, so
+          the entrance keyframes below always replay. */}
+      {showBigContent && (
+        <>
           {cover && (
             <div
               className="absolute inset-0 bg-cover bg-center"
@@ -155,8 +269,10 @@ export default function HeroPlayer() {
               )}
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
+
+  return createPortal(node, document.body);
 }
