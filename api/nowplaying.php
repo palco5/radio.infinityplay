@@ -315,17 +315,16 @@ function getIcyTitle($url)
         return '';
     }
 
-    // Skip over the audio bytes to reach the first metadata block
-    $remaining = $metaint;
-    while ($remaining > 0 && !feof($fp)) {
-        $chunk = fread($fp, min(8192, $remaining));
-        if ($chunk === false || $chunk === '') break;
-        $remaining -= strlen($chunk);
-    }
+    // Skip over the audio bytes to reach the first metadata block, then read
+    // the length byte and the metadata itself — all via readIcyBytes(),
+    // which retries on empty reads instead of trusting feof() alone. PHP's
+    // ssl:// stream wrapper can report a spurious EOF between TLS record
+    // boundaries mid-stream even though more data is still coming, which
+    // would otherwise cut the skip short and misalign everything that follows.
+    readIcyBytes($fp, $metaint);
 
-    // Read metadata length byte (length = byte_value * 16)
-    $lengthByte = fread($fp, 1);
-    if (!$lengthByte || strlen($lengthByte) === 0) {
+    $lengthByte = readIcyBytes($fp, 1);
+    if ($lengthByte === '') {
         fclose($fp);
         return '';
     }
@@ -333,14 +332,7 @@ function getIcyTitle($url)
 
     $title = '';
     if ($metaLength > 0) {
-        $metadata      = '';
-        $metaRemaining = $metaLength;
-        while ($metaRemaining > 0 && !feof($fp)) {
-            $chunk = fread($fp, $metaRemaining);
-            if ($chunk === false) break;
-            $metadata      .= $chunk;
-            $metaRemaining -= strlen($chunk);
-        }
+        $metadata = readIcyBytes($fp, $metaLength);
         // ICY metadata format: StreamTitle='Artist - Title';StreamUrl='...';
         if (preg_match("/StreamTitle='([^;]*)'/", $metadata, $m)) {
             $title = trim(rtrim($m[1], "\x00 "));
@@ -349,4 +341,24 @@ function getIcyTitle($url)
 
     fclose($fp);
     return $title;
+}
+
+// Reliably read exactly $length bytes from a (possibly SSL-wrapped) stream
+// socket, retrying briefly on empty reads instead of trusting feof() alone.
+function readIcyBytes($fp, $length)
+{
+    $data = '';
+    $emptyReads = 0;
+    while (strlen($data) < $length) {
+        $chunk = fread($fp, $length - strlen($data));
+        if ($chunk === false || $chunk === '') {
+            if (feof($fp)) break;
+            if (++$emptyReads > 20) break;
+            usleep(10000);
+            continue;
+        }
+        $emptyReads = 0;
+        $data .= $chunk;
+    }
+    return $data;
 }
