@@ -54,11 +54,11 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
 
   // 10s pause grace — after this, the hero shrinks back into the grid.
   useEffect(() => {
-    console.log('[HeroPlayer] pause-grace effect run', { mode, isPlayingNow, songState });
+    console.log('[HeroPlayer] pause-grace effect run :: ' + JSON.stringify({ mode, isPlayingNow, songState, t: Date.now() }));
     if (mode !== 'none' && !isPlayingNow && !(mode === 'song' && songState === 'loading')) {
-      console.log('[HeroPlayer] scheduling forceClosed timer');
-      pauseTimerRef.current = setTimeout(() => { console.log('[HeroPlayer] TIMER FIRED -> forceClosed=true'); setForceClosed(true); }, PAUSE_GRACE_MS);
-      return () => { console.log('[HeroPlayer] clearing pending timer'); if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current); };
+      console.log('[HeroPlayer] scheduling forceClosed timer :: t=' + Date.now());
+      pauseTimerRef.current = setTimeout(() => { console.log('[HeroPlayer] TIMER FIRED -> forceClosed=true :: t=' + Date.now()); setForceClosed(true); }, PAUSE_GRACE_MS);
+      return () => { console.log('[HeroPlayer] clearing pending timer :: t=' + Date.now()); if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current); };
     }
   }, [mode, isPlayingNow, songState]);
 
@@ -88,8 +88,9 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
 
   // Open (grow) / close (shrink) transitions
   useEffect(() => {
-    console.log('[HeroPlayer] active-transition effect', { active, prevActive: prevActiveRef.current, mode, forceClosed });
+    console.log('[HeroPlayer] active-transition effect :: ' + JSON.stringify({ active, prevActive: prevActiveRef.current, mode, forceClosed, t: Date.now() }));
     if (active && !prevActiveRef.current) {
+      console.log('[HeroPlayer] -> OPENING');
       clearTimeouts();
       const fromEl = originEl();
       const from = fromEl?.getBoundingClientRect();
@@ -115,6 +116,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
       after(ANIM_MS, () => setPhase('expanded'));
       after(ANIM_MS - 160, () => setContentReady(true));
     } else if (!active && prevActiveRef.current) {
+      console.log('[HeroPlayer] -> CLOSING');
       clearTimeouts();
       const toEl = originEl();
       const from = targetRect();
