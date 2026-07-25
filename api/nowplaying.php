@@ -279,10 +279,6 @@ function getIcyTitle($url)
 
     $fp = @fopen($url, 'r', false, $context);
     if (!$fp) {
-        if (isset($_GET['debug'])) {
-            echo json_encode(['debug' => 'fopen failed: ' . json_encode(error_get_last())]);
-            exit;
-        }
         return '';
     }
 
