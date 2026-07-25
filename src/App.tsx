@@ -7,7 +7,6 @@ import { useAudio } from './contexts/AudioContext';
 import { SongPlayerProvider } from './contexts/SongPlayerContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
-import AudioPlayer from './components/player/AudioPlayer';
 import PageLoadAnimation from './components/ui/PageLoadAnimation';
 import LandingPage from './pages/LandingPage';
 import PaymentPage from './pages/PaymentPage';
@@ -27,7 +26,7 @@ import { useIsStandalone } from './hooks/useIsStandalone';
 function AppContent() {
   const location = useLocation();
   const isStandalone = useIsStandalone();
-  const { currentStation, pause } = useAudio();
+  const { pause } = useAudio();
   const isUserDashboard = location.pathname === '/dashboard';
   const isAdmin = location.pathname === '/admin';
   const isHome = location.pathname === '/';
@@ -53,7 +52,7 @@ function AppContent() {
       {showAnimation && <PageLoadAnimation onComplete={handleAnimationComplete} />}
       <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors duration-300 smooth-scroll">
         {!shouldHideLayout && <Navbar />}
-        <main className={isUserDashboard && currentStation ? 'pb-28' : ''}>
+        <main>
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -96,7 +95,6 @@ function AppContent() {
           </Routes>
         </main>
         {!shouldHideLayout && <Footer />}
-        {isUserDashboard && <AudioPlayer />}
         {!isDashboard && <CookieConsent />}
       </div>
     </>

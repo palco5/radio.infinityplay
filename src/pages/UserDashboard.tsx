@@ -10,6 +10,7 @@ import { useRemoteSession, RemoteDevice } from '../hooks/useRemoteSession';
 import RemoteControlPanel from '../components/dashboard/RemoteControlPanel';
 import SongMiniPlayer from '../components/dashboard/SongMiniPlayer';
 import DJManagerOverlay from '../components/dashboard/DJManagerOverlay';
+import HeroPlayer from '../components/dashboard/HeroPlayer';
 import { useSongPlayer } from '../contexts/SongPlayerContext';
 
 import confetti from 'canvas-confetti';
@@ -17,8 +18,6 @@ import {
   Play,
   Filter,
   User,
-  CreditCard,
-  Settings,
   LogOut,
   Moon,
   Sun,
@@ -64,6 +63,8 @@ export default function UserDashboard() {
   const [isDJOpen, setIsDJOpen] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const djButtonRef = useRef<HTMLButtonElement>(null);
+  const heroSlotRef = useRef<HTMLDivElement>(null);
+  const stationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const { songState, currentSong, stopSong, skipSong, setQueuedAction, pauseSong, resumeSong, playSong, queueSong, songQueue, postRadioQueue, savedPlaylist, saveCurrentQueueAs, clearSavedPlaylist, scheduleSwitch, resumeSavedPlaylist } = useSongPlayer();
 
@@ -420,6 +421,12 @@ export default function UserDashboard() {
     }
   };
 
+  const getStationOriginEl = () => {
+    const id = currentStation?.id;
+    return id ? stationRefs.current.get(id) ?? null : null;
+  };
+  const getDjOriginEl = () => djButtonRef.current;
+
   const handleStationClick = (station: RadioStation) => {
     if (songState !== 'idle') {
       setPendingStation(station);
@@ -577,81 +584,15 @@ export default function UserDashboard() {
           <TrialStatus />
         </div>
 
-        <div className="grid lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
-          <Card className="lg:col-span-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 md:mb-6">
-              <div>
-                <h1 className="text-2xl md:text-3xl font-serif font-bold text-gray-900 dark:text-white mb-1 md:mb-2">
-                  Dobrodošli nazad!
-                </h1>
-                <p className="text-sm md:text-base text-gray-600 dark:text-gray-400">
-                  Pronađite i slušajte svoje omiljene radio stanice
-                </p>
-              </div>
-              {activeProfile?.subscription_tier && (
-                <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-                  <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg border border-white/30">
-                    <span className="text-white text-sm md:text-base font-bold uppercase">
-                      {activeProfile.subscription_status === 'trial' ? 'PROBNI PAKET' : activeProfile.subscription_tier}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
-              <div className="bg-gradient-to-br from-infinity-green-400 to-infinity-green-600 rounded-2xl p-4 text-white">
-                <Music size={32} className="mb-2" />
-                <p className="text-2xl font-bold">{stations.length}</p>
-                <p className="text-sm opacity-90">Dostupnih stanica</p>
-              </div>
-              <div className="bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl p-4 text-white">
-                <Clock size={32} className="mb-2" />
-                <p className="text-2xl font-bold">{activeProfile?.total_listening_minutes || 0}</p>
-                <p className="text-sm opacity-90">Minuta slušanja</p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-400 to-purple-600 rounded-2xl p-4 text-white">
-                <Play size={32} className="mb-2" />
-                <p className="text-2xl font-bold">{currentStation ? '1' : '0'}</p>
-                <p className="text-sm opacity-90">Aktivna stanica</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <h3 className="text-base md:text-lg font-serif font-bold text-gray-900 dark:text-white mb-3 md:mb-4">
-              Brzi Pristup
-            </h3>
-            <div className="space-y-1.5 md:space-y-2">
-              <button
-                onClick={() => { setSettingsInitialTab('account'); setShowSettingsModal(true); }}
-                className="w-full flex items-center space-x-3 p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors text-left"
-              >
-                <User className="text-infinity-green-600" size={20} />
-                <span className="text-gray-700 dark:text-gray-300">Moj Profil</span>
-              </button>
-              <button
-                onClick={() => { setSettingsInitialTab('billing'); setShowSettingsModal(true); }}
-                className="w-full flex items-center space-x-3 p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors text-left"
-              >
-                <CreditCard className="text-infinity-green-600" size={20} />
-                <span className="text-gray-700 dark:text-gray-300">Pretplata</span>
-              </button>
-              <button
-                onClick={() => { setSettingsInitialTab('account'); setShowSettingsModal(true); }}
-                className="w-full flex items-center space-x-3 p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors text-left"
-              >
-                <Settings className="text-infinity-green-600" size={20} />
-                <span className="text-gray-700 dark:text-gray-300">Podešavanja</span>
-              </button>
-            </div>
-          </Card>
-        </div>
+        <div ref={heroSlotRef} />
 
         <Card>
           {/* 1. Moj Radio — na vrhu */}
           {mojRadioStation && (
-            <div className="mb-4">
+            <div
+              className="mb-4"
+              ref={(el) => { if (el) stationRefs.current.set(mojRadioStation.id, el); else stationRefs.current.delete(mojRadioStation.id); }}
+            >
               <MojRadioCard
                 isPlaying={isMojRadioPlaying}
                 onClick={handleMojRadioClick}
@@ -836,12 +777,16 @@ export default function UserDashboard() {
                   clickedStationId === station.id;
 
                 return (
-                  <StationCard
+                  <div
                     key={station.id}
-                    station={station}
-                    isCurrentlyPlaying={isCurrentlyPlaying}
-                    onClick={handleStationClick}
-                  />
+                    ref={(el) => { if (el) stationRefs.current.set(station.id, el); else stationRefs.current.delete(station.id); }}
+                  >
+                    <StationCard
+                      station={station}
+                      isCurrentlyPlaying={isCurrentlyPlaying}
+                      onClick={handleStationClick}
+                    />
+                  </div>
                 );
               })}
             </div>
@@ -870,6 +815,12 @@ export default function UserDashboard() {
         remoteSessions={remoteSessions}
         sendRemoteCommand={sendRemoteCommand}
         buttonRef={djButtonRef}
+      />
+
+      <HeroPlayer
+        heroSlotRef={heroSlotRef}
+        getStationOriginEl={getStationOriginEl}
+        getDjOriginEl={getDjOriginEl}
       />
 
       {/* Station intercept modal — shown when song is playing and user picks a station */}
