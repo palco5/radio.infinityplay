@@ -164,12 +164,20 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
   songStateRef.current = songState;
   currentSongRef.current = currentSong;
 
-  // Sync volume slider → YouTube when not crossfading
+  // Sync volume slider → YouTube when not crossfading. Debounced — dragging
+  // the slider fires onChange on nearly every pixel of movement, and firing
+  // a setVolume() postMessage to the YouTube iframe on every single tick can
+  // flood its message channel badly enough that the player stops responding
+  // to playVideo()/pauseVideo() afterward. Only the settled value matters.
+  const volumeSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (isCrossfadingRef.current) return;
-    if ((songState === 'playing' || songState === 'paused') && ytPlayerRef.current) {
-      try { ytPlayerRef.current.setVolume(Math.round(radioUserVolume * 100)); } catch {}
-    }
+    if (!((songState === 'playing' || songState === 'paused') && ytPlayerRef.current)) return;
+    if (volumeSyncTimerRef.current) clearTimeout(volumeSyncTimerRef.current);
+    volumeSyncTimerRef.current = setTimeout(() => {
+      try { ytPlayerRef.current?.setVolume(Math.round(radioUserVolume * 100)); } catch {}
+    }, 80);
+    return () => { if (volumeSyncTimerRef.current) clearTimeout(volumeSyncTimerRef.current); };
   }, [radioUserVolume, songState]);
 
   const startTimePolling = useCallback(() => {
