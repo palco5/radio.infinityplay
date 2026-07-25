@@ -279,6 +279,10 @@ function getIcyTitle($url)
     $fp = @stream_socket_client($target, $errno, $errstr, 8, STREAM_CLIENT_CONNECT, $context);
 
     if (!$fp) {
+        if (isset($_GET['debug'])) {
+            echo json_encode(['debug' => "connect failed: errno=$errno errstr=$errstr target=$target"]);
+            exit;
+        }
         return '';
     }
 
@@ -308,6 +312,11 @@ function getIcyTitle($url)
         if (stripos($trimmed, 'icy-metaint:') !== false) {
             $metaint = (int)trim(preg_replace('/^icy-metaint:\s*/i', '', $trimmed));
         }
+    }
+
+    if (isset($_GET['debug'])) {
+        echo json_encode(['debug' => "connected ok, statusCode=$statusCode metaint=$metaint"]);
+        exit;
     }
 
     if ($metaint <= 0 || ($statusCode > 0 && $statusCode >= 400)) {
