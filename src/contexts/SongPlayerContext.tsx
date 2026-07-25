@@ -692,6 +692,14 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
     setSongQueue(newSQ);
     postRadioQueueRef.current = newPRQ;
     setPostRadioQueue(newPRQ);
+
+    // Reordering may have moved a different song to the front — make sure
+    // that one is what's actually being preloaded, not whatever used to be
+    // first (otherwise skipping to it hits the slow, un-preloaded path).
+    const newFront = newSQ[0];
+    if (newFront && (!preloadedSongRef.current || videoCacheKey(preloadedSongRef.current) !== videoCacheKey(newFront))) {
+      preloadNextSongPlayerRef.current?.(newFront);
+    }
   }, []);
 
   const setQueuedAction = useCallback((action: (() => void) | null) => {
