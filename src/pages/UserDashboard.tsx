@@ -65,6 +65,7 @@ export default function UserDashboard() {
   const djButtonRef = useRef<HTMLButtonElement>(null);
   const heroSlotRef = useRef<HTMLDivElement>(null);
   const stationRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [hiddenStationId, setHiddenStationId] = useState<string | null>(null);
 
   const { songState, currentSong, stopSong, skipSong, setQueuedAction, pauseSong, resumeSong, playSong, queueSong, songQueue, postRadioQueue, savedPlaylist, saveCurrentQueueAs, clearSavedPlaylist, scheduleSwitch, resumeSavedPlaylist } = useSongPlayer();
 
@@ -422,10 +423,7 @@ export default function UserDashboard() {
   };
 
 
-  const getStationOriginEl = () => {
-    const id = currentStation?.id;
-    return id ? stationRefs.current.get(id) ?? null : null;
-  };
+  const getStationOriginEl = (id: string) => stationRefs.current.get(id) ?? null;
   const getDjOriginEl = () => djButtonRef.current;
 
   const handleStationClick = (station: RadioStation) => {
@@ -589,13 +587,14 @@ export default function UserDashboard() {
           heroSlotRef={heroSlotRef}
           getStationOriginEl={getStationOriginEl}
           getDjOriginEl={getDjOriginEl}
+          onHiddenStationChange={setHiddenStationId}
         />
 
         <Card>
           {/* 1. Moj Radio — na vrhu */}
           {mojRadioStation && (
             <div
-              className="mb-4"
+              className={`mb-4 transition-opacity duration-200 ${hiddenStationId === mojRadioStation.id ? 'opacity-0 pointer-events-none' : ''}`}
               ref={(el) => { if (el) stationRefs.current.set(mojRadioStation.id, el); else stationRefs.current.delete(mojRadioStation.id); }}
             >
               <MojRadioCard
@@ -784,6 +783,7 @@ export default function UserDashboard() {
                 return (
                   <div
                     key={station.id}
+                    className={`transition-opacity duration-200 ${hiddenStationId === station.id ? 'opacity-0 pointer-events-none' : ''}`}
                     ref={(el) => { if (el) stationRefs.current.set(station.id, el); else stationRefs.current.delete(station.id); }}
                   >
                     <StationCard
