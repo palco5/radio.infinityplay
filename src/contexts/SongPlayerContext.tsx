@@ -251,7 +251,9 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
       new YT.Player('yt-song-player-preload', {
         height: '1', width: '1', videoId: ids[0],
         // mute:1 → browser allows autoplay even on mobile (muted autoplay is always permitted)
-        playerVars: { autoplay: 1, mute: 1, controls: 0, iv_load_policy: 3, rel: 0, modestbranding: 1, playsinline: 1 },
+        // origin must match the embedding page — without it the widget API can't validate
+        // postMessage calls and the player can stop responding to later commands entirely.
+        playerVars: { autoplay: 1, mute: 1, controls: 0, iv_load_policy: 3, rel: 0, modestbranding: 1, playsinline: 1, origin: window.location.origin },
         events: {
           onReady: (e: any) => {
             if (gen !== preloadGenRef.current) { try { e.target.destroy(); } catch {}; return; }
@@ -500,7 +502,9 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
           new YT.Player('yt-song-player', {
             height: '1', width: '1', videoId: vid,
             // mute:1 = browser always allows muted autoplay; we unmute in onStateChange once audio is ready
-            playerVars: { autoplay: 1, mute: 1, controls: 0, iv_load_policy: 3, rel: 0, modestbranding: 1, playsinline: 1 },
+            // origin must match the embedding page — without it the widget API can't validate
+            // postMessage calls and the player can stop responding to later commands entirely.
+            playerVars: { autoplay: 1, mute: 1, controls: 0, iv_load_policy: 3, rel: 0, modestbranding: 1, playsinline: 1, origin: window.location.origin },
             events: {
               onReady: (e: any) => {
                 if (gen !== songGenRef.current) { clearTimeout(totalTimer); try { e.target.destroy(); } catch {} resolve(false); return; }
