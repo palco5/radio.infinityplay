@@ -267,7 +267,25 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
               try { e.target.pauseVideo(); } catch {} // Freeze at ~0s, keep buffer hot
             }
           },
-          onError: () => {
+          onError: (e: any) => {
+            console.error('[SongPlayer] YouTube player error, code:', e?.data);
+            // This handler stays attached for the object's whole lifetime,
+            // including after it's been promoted from "preload" to the
+            // actual live/playing song (ytPlayerRef.current gets set to this
+            // same object elsewhere). Previously an error here only ever
+            // cleared the preload bookkeeping — if it fired on an already-
+            // promoted, actively-playing instance, nothing reset songState
+            // or ytPlayerRef, leaving playback silently frozen with no
+            // recovery. Recover properly when that's the case.
+            if (ytPlayerRef.current === e?.target) {
+              ytPlayerRef.current = null;
+              stopTimePolling();
+              setSongActive(false);
+              setSongState('idle');
+              setCurrentSong(null);
+              fadeRadioTo(radioUserVolumeRef.current, 1000);
+              return;
+            }
             if (gen === preloadGenRef.current) {
               preloadedPlayerRef.current = null;
               preloadedReadyRef.current = false;
@@ -276,7 +294,7 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
         },
       });
     } catch { /* ignore preload errors */ }
-  }, [destroyPreloaded]);
+  }, [destroyPreloaded, stopTimePolling, setSongActive, fadeRadioTo]);
 
   preloadNextSongPlayerRef.current = preloadNextSongPlayer;
 
@@ -544,9 +562,28 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
                   }
                 }
               },
-              onError: () => {
+              onError: (e: any) => {
+                console.error('[SongPlayer] YouTube player error, code:', e?.data, 'crossfadeStarted:', crossfadeStarted);
                 clearTimeout(totalTimer);
-                try { ytPlayerRef.current = null; } catch {}
+                ytPlayerRef.current = null;
+                if (crossfadeStarted) {
+                  // This player was already the committed, playing song (past
+                  // the initial-load retry loop below, which never sees this
+                  // error) — previously this just orphaned the ref with no
+                  // state update, freezing the UI (play/pause guards silently
+                  // no-op once ytPlayerRef is null) with no visible error.
+                  // Recover explicitly: drop back to idle and let the radio
+                  // resume, same as when a song legitimately runs out.
+                  if (gen === songGenRef.current) {
+                    stopTimePolling();
+                    setSongActive(false);
+                    setSongState('idle');
+                    setCurrentSong(null);
+                    fadeRadioTo(radioUserVolumeRef.current, 1000);
+                  }
+                  resolve(false);
+                  return;
+                }
                 if (gen !== songGenRef.current) { resolve(false); return; }
                 resolve(false);
               },
@@ -572,7 +609,7 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
       setCurrentSong(null);
       fadeRadioTo(radioUserVolumeRef.current, 1000);
     }
-  }, [destroyPlayer, fadeRadioTo, handleSongEnd, radioUserVolume, startTimePolling, setSongActive]);
+  }, [destroyPlayer, fadeRadioTo, handleSongEnd, radioUserVolume, startTimePolling, stopTimePolling, setSongActive]);
 
   playSongNowRef.current = playSongNow;
 
