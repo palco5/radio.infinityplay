@@ -311,6 +311,14 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
         setCurrentTime(0);
         setDuration(0);
 
+        // nextPlayer's div still carries the 'yt-song-player-preload' id at this
+        // point. Preloading the song after this one (below) calls
+        // destroyPreloaded(), which removes whatever element currently holds
+        // that id — claim a neutral id first so that doesn't tear the live,
+        // actively-playing iframe out of the document out from under it.
+        const nextPlayerDiv = document.getElementById('yt-song-player-preload');
+        if (nextPlayerDiv) nextPlayerDiv.id = 'yt-song-player-live-pending';
+
         // Unmute (was muted for silent preload) and ensure volume starts at 0 for crossfade
         try { nextPlayer.unMute(); } catch {}
         try { nextPlayer.setVolume(0); } catch {}
@@ -338,8 +346,8 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
         if (player) { try { player.destroy(); } catch {} }
         const oldDiv = document.getElementById('yt-song-player');
         if (oldDiv) oldDiv.remove();
-        const preloadDiv = document.getElementById('yt-song-player-preload');
-        if (preloadDiv) preloadDiv.id = 'yt-song-player';
+        const promotedDiv = document.getElementById('yt-song-player-live-pending');
+        if (promotedDiv) promotedDiv.id = 'yt-song-player';
 
         try { const d = nextPlayer.getDuration?.() ?? 0; if (d > 0) setDuration(d); } catch {}
         startTimePolling();
