@@ -92,6 +92,23 @@ function ensurePlayerDiv(): void {
   }
 }
 
+// A preloaded player sits paused (muted, frozen at ~0s) for however long the
+// current song keeps playing — sometimes several minutes — before being
+// promoted to live and told to unmute + playVideo(). Some browsers silently
+// fail to resume audible playback on a player that's been idle that long,
+// leaving it looking "stuck" until the user manually pauses/resumes (which
+// counts as a fresh gesture and unsticks it). Verify shortly after promotion
+// and retry once instead of leaving it frozen.
+function ensurePlaybackStarted(player: any, isStillCurrent: () => boolean) {
+  setTimeout(() => {
+    if (!isStillCurrent()) return;
+    try {
+      const state = player.getPlayerState?.();
+      if (state !== 1 && state !== 3) player.playVideo(); // not PLAYING or BUFFERING
+    } catch { /* ignore */ }
+  }, 400);
+}
+
 export function formatSongTime(s: number): string {
   if (!isFinite(s) || s < 0) return '0:00';
   const m = Math.floor(s / 60);
@@ -152,6 +169,8 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
   const playSongNowRef = useRef<((song: SongInfo, chaining?: boolean) => Promise<void>) | null>(null);
   const songEndHandledRef = useRef(false);
   const handleSongEndRef = useRef<((gen: number) => Promise<void>) | null>(null);
+  const maxDurationRef = useRef(0);
+  const nearEndStreakRef = useRef(0);
 
   // Preloaded next-song player
   const preloadedPlayerRef = useRef<any>(null);
@@ -181,6 +200,8 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
   }, [radioUserVolume, songState]);
 
   const startTimePolling = useCallback(() => {
+    maxDurationRef.current = 0;
+    nearEndStreakRef.current = 0;
     if (timeIntervalRef.current) clearInterval(timeIntervalRef.current);
     timeIntervalRef.current = setInterval(() => {
       const p = ytPlayerRef.current;
@@ -189,10 +210,25 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
         const t = p.getCurrentTime?.() ?? 0;
         const d = p.getDuration?.() ?? 0;
         setCurrentTime(t);
-        if (d > 0) setDuration(d);
-        // Trigger crossfade 3 seconds before end (YouTube videos have silence at the tail)
-        if (d > 6 && t >= d - 3 && !songEndHandledRef.current) {
-          handleSongEndRef.current?.(songGenRef.current);
+        if (d > 0) {
+          setDuration(d);
+          // A player resuming from a long paused/buffered state (the preload
+          // "freeze at ~0s" trick) can briefly report a shorter getDuration()
+          // than it settles on a moment later. Trust the largest value seen
+          // for this song so a transient dip can't look like "almost done".
+          if (d > maxDurationRef.current) maxDurationRef.current = d;
+        }
+        const stableDuration = maxDurationRef.current;
+        // Trigger crossfade 3 seconds before end (YouTube videos have silence at the tail).
+        // Require two consecutive polls (1s apart) to agree before acting, so a single
+        // stray/glitchy reading can't cut the song off early.
+        if (stableDuration > 6 && t >= stableDuration - 3 && !songEndHandledRef.current) {
+          nearEndStreakRef.current += 1;
+          if (nearEndStreakRef.current >= 2) {
+            handleSongEndRef.current?.(songGenRef.current);
+          }
+        } else {
+          nearEndStreakRef.current = 0;
         }
       } catch {}
     }, 500);
@@ -343,6 +379,7 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
         try { nextPlayer.unMute(); } catch {}
         try { nextPlayer.setVolume(0); } catch {}
         try { nextPlayer.playVideo(); } catch {} // Resume from buffered position ~0
+        ensurePlaybackStarted(nextPlayer, () => newGen === songGenRef.current);
         ytPlayerRef.current = nextPlayer;
 
         // Start preloading song after nextSong NOW — don't wait for crossfade to finish
@@ -475,6 +512,7 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
       try { nextPlayer.unMute(); } catch {}
       try { nextPlayer.setVolume(0); } catch {}
       try { nextPlayer.playVideo(); } catch {}
+      ensurePlaybackStarted(nextPlayer, () => gen === songGenRef.current);
 
       setSongState('playing');
       setCurrentTime(0);
