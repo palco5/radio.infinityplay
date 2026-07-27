@@ -35,6 +35,13 @@ function heroHeight() {
   return window.innerWidth < 768 ? 280 : 360;
 }
 
+function formatTime(seconds: number) {
+  if (!isFinite(seconds) || seconds < 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 // Only exists in the DOM while something is playing (or was just paused, inside
 // the grace window). Grows from the clicked card up into the hero slot via a
 // FLIP-style rect animation (a `position: fixed` overlay, only during the
@@ -46,7 +53,7 @@ function heroHeight() {
 // sequence — the old station flies back down, then the new one flies up.
 export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOriginEl, onHiddenStationChange }: HeroPlayerProps) {
   const { currentStation, isPlaying, pause, playStation, volume, setVolume, nowPlayingTitle, nowPlayingCover } = useAudio();
-  const { songState, currentSong, pauseSong, resumeSong, skipSong, stopSong, songQueue } = useSongPlayer();
+  const { songState, currentSong, pauseSong, resumeSong, skipSong, stopSong, songQueue, currentTime, duration, seekTo } = useSongPlayer();
 
   const isSongActiveNow = songState === 'playing' || songState === 'paused' || songState === 'loading';
   const mode: 'song' | 'radio' | 'none' = isSongActiveNow ? 'song' : currentStation ? 'radio' : 'none';
@@ -318,6 +325,35 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
             <div className="w-[22px]" />
           )}
         </div>
+
+        {mode === 'song' && duration > 0 && (
+          <div
+            className="w-full max-w-xs mt-4"
+            style={{ animation: 'hero-text-in 0.5s ease-out 0.4s both' }}
+          >
+            <div
+              className="relative h-1.5 bg-white/20 rounded-full cursor-pointer group"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                seekTo(ratio * duration);
+              }}
+            >
+              <div
+                className="absolute inset-y-0 left-0 bg-infinity-green-500 rounded-full"
+                style={{ width: `${Math.min(100, (currentTime / duration) * 100)}%` }}
+              />
+              <div
+                className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ left: `calc(${Math.min(100, (currentTime / duration) * 100)}% - 6px)` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1 text-[10px] text-white/50 font-medium tabular-nums">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
