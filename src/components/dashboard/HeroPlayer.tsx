@@ -24,7 +24,8 @@ interface Rect {
 }
 
 const PAUSE_GRACE_MS = 10000;
-const ANIM_MS = 600;
+const ANIM_MS = 700;
+const SWITCH_PAUSE_MS = 280; // breathing room between "landed back on old card" and "flying up from new one"
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)'; // smooth "expo-out" glide
 const EXPANDED_HEIGHT = 'h-[280px] md:h-[360px]';
 const EXPANDED_RADIUS = 24; // matches Tailwind's rounded-3xl, used for FLIP math
@@ -72,6 +73,8 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const staticBoxRef = useRef<HTMLDivElement>(null);
   const displayedRef = useRef<Displayed>(null);
+  const currentStationIdRef = useRef<string | null>(null);
+  currentStationIdRef.current = currentStation?.id ?? null;
 
   const active = mode !== 'none' && !forceClosed;
 
@@ -210,11 +213,21 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
       d?.mode === 'radio' && currentStation && d.id !== currentStation.id
     ) {
       const oldId = d.id;
-      const newId = currentStation.id;
       closeToOrigin(getStationOriginEl(oldId), () => {
-        displayedRef.current = { mode: 'radio', id: newId };
-        setHiddenStationId(newId);
-        openFromOrigin(getStationOriginEl(newId));
+        // Let it visibly settle back into the grid for a beat before the
+        // next one starts flying up — otherwise the two motions blur
+        // together and the "returned to its place" moment barely registers.
+        after(SWITCH_PAUSE_MS, () => {
+          // Re-read the current station rather than closing over the id from
+          // when this effect fired — if the user clicked another station
+          // again during the pause, this makes sure we fly up to wherever
+          // they actually ended up, not a now-stale target.
+          const latestId = currentStationIdRef.current;
+          if (!latestId) return;
+          displayedRef.current = { mode: 'radio', id: latestId };
+          setHiddenStationId(latestId);
+          openFromOrigin(getStationOriginEl(latestId));
+        });
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
