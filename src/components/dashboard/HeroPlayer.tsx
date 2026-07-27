@@ -214,9 +214,16 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
     ) {
       const oldId = d.id;
       closeToOrigin(getStationOriginEl(oldId), () => {
-        // Let it visibly settle back into the grid for a beat before the
-        // next one starts flying up — otherwise the two motions blur
-        // together and the "returned to its place" moment barely registers.
+        // Reveal the old card the instant the box finishes landing on it —
+        // it was hidden (opacity 0, same reserved slot) the whole time it was
+        // up in the player, so up to now the box was shrinking down onto a
+        // spot with nothing visible there. Un-hiding it here is what sells
+        // "this is the card, back in place" instead of landing on a
+        // contextless blank spot in the grid.
+        setHiddenStationId(null);
+        // Then let it sit visibly settled for a beat before the next one
+        // starts flying up — otherwise the two motions blur together and
+        // the "returned to its place" moment barely registers.
         after(SWITCH_PAUSE_MS, () => {
           // Re-read the current station rather than closing over the id from
           // when this effect fired — if the user clicked another station
