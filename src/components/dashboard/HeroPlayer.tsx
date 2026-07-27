@@ -63,6 +63,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
   const [phase, setPhase] = useState<Phase>('closed');
   const [rect, setRect] = useState<Rect | null>(null);
   const [radius, setRadius] = useState(16);
+  const [transitionMs, setTransitionMs] = useState(ANIM_MS);
   const [flying, setFlying] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const [forceClosed, setForceClosed] = useState(false);
@@ -117,6 +118,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
 
   const openFromOrigin = (fromEl: HTMLElement | null) => {
     clearTimeouts();
+    setTransitionMs(ANIM_MS);
     const from = fromEl?.getBoundingClientRect();
     const target = targetRect();
 
@@ -145,6 +147,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
 
   const closeToOrigin = (toEl: HTMLElement | null, onDone: () => void) => {
     clearTimeouts();
+    setTransitionMs(ANIM_MS);
     // The hero has been an ordinary in-flow block while expanded, so it may
     // have scrolled anywhere — read its real on-screen position rather than
     // recomputing the slot's original (pre-scroll) target rect.
@@ -171,13 +174,26 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
         setRadius(20);
         setFlying(true);
       });
+      // The predicted finalTop assumes the scroll settles with the card
+      // perfectly centered, which isn't always true (e.g. near the top/
+      // bottom of the scrollable page) — a wrong prediction here used to
+      // mean the box could land on a neighboring card instead of the right
+      // one. Re-measure the card's REAL position once the scroll should be
+      // done and snap to it with one quick corrective adjustment, so it
+      // always lands exactly on its own card before revealing it.
+      after(ANIM_MS + 30, () => {
+        const settled = toEl.getBoundingClientRect();
+        setTransitionMs(180);
+        setRect({ top: settled.top, left: settled.left, width: settled.width, height: settled.height });
+      });
+      after(ANIM_MS + 30 + 180, () => { setPhase('closed'); setRect(null); setFlying(false); onDone(); });
     } else {
       after(20, () => {
         setRect({ top: from.top + 24, left: from.left, width: from.width, height: from.height * 0.6 });
         setFlying(true);
       });
+      after(ANIM_MS, () => { setPhase('closed'); setRect(null); setFlying(false); onDone(); });
     }
-    after(ANIM_MS, () => { setPhase('closed'); setRect(null); setFlying(false); onDone(); });
   };
 
   // Open (grow) / close (shrink) transitions
@@ -425,7 +441,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
             height: rect?.height ?? 0,
             borderRadius: radius,
             boxShadow: flying ? FLY_SHADOW : SETTLED_SHADOW,
-            transition: `top ${ANIM_MS}ms ${EASE}, left ${ANIM_MS}ms ${EASE}, width ${ANIM_MS}ms ${EASE}, height ${ANIM_MS}ms ${EASE}, border-radius ${ANIM_MS}ms ${EASE}, box-shadow ${ANIM_MS}ms ${EASE}`,
+            transition: `top ${transitionMs}ms ${EASE}, left ${transitionMs}ms ${EASE}, width ${transitionMs}ms ${EASE}, height ${transitionMs}ms ${EASE}, border-radius ${transitionMs}ms ${EASE}, box-shadow ${transitionMs}ms ${EASE}`,
           }}
         >
           {/* Small preview shown only while flying between the card and the slot */}
