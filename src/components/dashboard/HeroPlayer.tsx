@@ -59,7 +59,6 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
   const [contentReady, setContentReady] = useState(false);
   const [forceClosed, setForceClosed] = useState(false);
   const [hiddenStationId, setHiddenStationId] = useState<string | null>(null);
-  const [draftVolume, setDraftVolume] = useState<number | null>(null);
 
   const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevActiveRef = useRef(false);
@@ -292,22 +291,8 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
             {volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
           <input
-            type="range" min="0" max="1" step="0.01" value={draftVolume ?? volume}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              if (mode === 'song') {
-                // Only move the slider visually while dragging — committing
-                // setVolume() on every tick sends a YouTube setVolume()
-                // postMessage on nearly every pixel of movement, which is
-                // what was breaking playback. Commit once, on release.
-                setDraftVolume(v);
-              } else {
-                setVolume(v);
-              }
-            }}
-            onMouseUp={(e) => { if (mode === 'song') { setVolume(parseFloat((e.target as HTMLInputElement).value)); setDraftVolume(null); } }}
-            onTouchEnd={(e) => { if (mode === 'song') { setVolume(parseFloat((e.target as HTMLInputElement).value)); setDraftVolume(null); } }}
-            onKeyUp={(e) => { if (mode === 'song') { setVolume(parseFloat((e.target as HTMLInputElement).value)); setDraftVolume(null); } }}
+            type="range" min="0" max="1" step="0.01" value={volume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
             className="w-20 md:w-28 h-1.5 bg-white/25 rounded-lg appearance-none cursor-pointer accent-infinity-green-500"
           />
 

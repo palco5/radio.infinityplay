@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useRef, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, useRef, useCallback, ReactNode, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { RadioStation, UserJingle } from '../types';
 import { useAuth } from './AuthContext';
@@ -33,6 +33,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   // Mirror volume state in a ref so async callbacks always read the live value
   const volumeRef = useRef(0.7);
+  // Mirror currentStation in a ref so playStation() can be a stable (useCallback)
+  // function without needing currentStation in its dependency array
+  const currentStationRef = useRef<RadioStation | null>(null);
+  currentStationRef.current = currentStation;
 
   // Dual-deck system for true crossfade
   const audioRef1 = useRef<HTMLAudioElement | null>(null);
@@ -325,8 +329,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     songTitleRef.current = title;
   };
 
-  const playStation = async (station: RadioStation) => {
-    if (currentStation?.id === station.id && isPlayingRef.current) return;
+  const playStation = useCallback(async (station: RadioStation) => {
+    if (currentStationRef.current?.id === station.id && isPlayingRef.current) return;
 
     const gen = ++playGenRef.current;
     const targetVolume = volumeRef.current;
@@ -390,8 +394,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
       // Start song title polling (every 30s for songs-based jingles)
       if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
-      songPollIntervalRef.current = setInterval(pollCurrentTitle, 30000);
-      pollCurrentTitle(); // Fetch initial title immediately
+      songPollIntervalRef.current = setInterval(() => pollCurrentTitleRef.current(), 30000);
+      pollCurrentTitleRef.current(); // Fetch initial title immediately
 
       if (isCrossfade) await fadeIn(nextDeck, targetVolume, 1500);
       if (!currentDeck.paused) currentDeck.pause();
@@ -410,9 +414,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setCurrentStation(null);
       console.error('Greška pri reprodukciji:', error);
     }
-  };
+  }, []);
 
-  const playJingle = async (jingleUrl: string, volumeBoostDb: number = 0, preloadedAudio?: HTMLAudioElement) => {
+  const playJingle = useCallback(async (jingleUrl: string, volumeBoostDb: number = 0, preloadedAudio?: HTMLAudioElement) => {
     if (!isPlayingRef.current) return;
 
     const jingleGen = playGenRef.current;
@@ -490,15 +494,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         fadeTo(radioDeck, volumeRef.current, 600);
       }
     }
-  };
+  }, []);
 
-  const updateJingles = (jingles: UserJingle[]) => {
+  const updateJingles = useCallback((jingles: UserJingle[]) => {
     if (jingleManagerRef.current) {
       jingleManagerRef.current.updateJingles(jingles);
     }
-  };
+  }, []);
 
-  const pause = () => {
+  const pause = useCallback(() => {
     setIsPlaying(false);
     isPlayingRef.current = false;
     playGenRef.current++;
@@ -525,9 +529,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (activeDeck) { fadeOut(activeDeck, 600).then(() => activeDeck.pause()); }
 
     updateListeningTime();
-  };
+  }, []);
 
-  const setVolume = (newVolume: number) => {
+  const setVolume = useCallback((newVolume: number) => {
     const v = Math.max(0, Math.min(1, newVolume));
     volumeRef.current = v;
     setVolumeState(v);
@@ -537,20 +541,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       if (audioRef1.current) audioRef1.current.volume = v;
       if (audioRef2.current) audioRef2.current.volume = v;
     }
-  };
+  }, []);
 
   // Fade the active radio deck to any volume — used by SongPlayerContext for crossfade
-  const fadeRadioTo = (targetVolume: number, duration: number = 1500) => {
+  const fadeRadioTo = useCallback((targetVolume: number, duration: number = 1500) => {
     const deck = activeDeckRef.current === 1 ? audioRef1.current : audioRef2.current;
     if (deck) fadeTo(deck, Math.max(0, Math.min(1, targetVolume)), duration);
-  };
+  }, []);
 
   // Keep refs current so callbacks and timeupdate handler always call the latest closures
   fireReadyJingleRef.current = fireReadyJingle;
   pollCurrentTitleRef.current = pollCurrentTitle;
 
   // Called by SongPlayerContext when YouTube song starts or ends
-  const setSongActive = (active: boolean) => {
+  const setSongActive = useCallback((active: boolean) => {
     isSongActiveRef.current = active;
     if (active) {
       // Kill any jingle that's currently playing or preloaded.
@@ -576,22 +580,22 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         }
       }, 2800);
     }
-  };
+  }, []);
 
   // Register/clear a callback that fires once on the next ICY song transition
-  const setSongTransitionCallback = (cb: (() => void) | null) => {
+  const setSongTransitionCallback = useCallback((cb: (() => void) | null) => {
     songTransitionCallbackRef.current = cb;
     if (cb && isPlayingRef.current) {
       // Speed up ICY polling to 3s so we catch song changes quickly
       if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
-      songPollIntervalRef.current = setInterval(pollCurrentTitle, 3000);
-      pollCurrentTitle();
+      songPollIntervalRef.current = setInterval(() => pollCurrentTitleRef.current(), 3000);
+      pollCurrentTitleRef.current();
     } else if (!cb && isPlayingRef.current) {
       // Restore normal 30s interval
       if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
-      songPollIntervalRef.current = setInterval(pollCurrentTitle, 30000);
+      songPollIntervalRef.current = setInterval(() => pollCurrentTitleRef.current(), 30000);
     }
-  };
+  }, []);
 
   return (
     <AudioContext.Provider
