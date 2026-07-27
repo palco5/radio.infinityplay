@@ -937,7 +937,7 @@ export default function UserDashboard() {
                 className="w-full flex items-center gap-3 px-4 py-3.5 bg-gray-100 dark:bg-infinity-dark-700 hover:bg-gray-200 dark:hover:bg-infinity-dark-600 text-gray-900 dark:text-white rounded-xl transition-colors font-semibold"
               >
                 <Clock size={18} />
-                <span>Nakon ove pesme / ICY promene</span>
+                <span>Nakon ove pesme</span>
               </button>
               <button
                 onClick={() => setShowResumeModal(false)}
