@@ -110,7 +110,8 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
             'trial_ends_at',
             'trial_started_at',
             'subscription_ends_at',
-            'my_radio_stream_url'
+            'my_radio_stream_url',
+            'email_verified'
         ];
         $allowedFields = array_merge($allowedFields, $adminFields);
     } else {
@@ -145,7 +146,7 @@ if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
             $updates[] = "$field = ?";
             if ($field === 'recommended_stations') {
                 $values[] = $data[$field] !== null ? json_encode($data[$field]) : null;
-            } elseif (in_array($field, ['is_admin', 'newsletter_subscribed', 'email_notifications', 'onboarding_completed', 'confetti_shown'])) {
+            } elseif (in_array($field, ['is_admin', 'newsletter_subscribed', 'email_notifications', 'onboarding_completed', 'confetti_shown', 'email_verified'])) {
                 $values[] = $data[$field] !== null ? (int) $data[$field] : null;
             } else {
                 $values[] = $data[$field];

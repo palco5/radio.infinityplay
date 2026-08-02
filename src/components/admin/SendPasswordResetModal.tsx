@@ -3,11 +3,7 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { UserProfile } from '../../types';
 import { Mail, Send, AlertCircle, Check } from 'lucide-react';
-import {
-    sendPasswordResetEmail,
-    generateResetToken,
-    saveResetToken
-} from '../../lib/emailService';
+import { auth } from '../../lib/api';
 
 interface SendPasswordResetModalProps {
     isOpen: boolean;
@@ -25,56 +21,24 @@ export default function SendPasswordResetModal({ isOpen, onClose, user }: SendPa
         setError('');
 
         try {
-            // Generiši reset token
-            const resetToken = generateResetToken();
-
-            // Sačuvaj token
-            saveResetToken(user.email, resetToken);
-
-            // Pošalji email sa Resend
-            const result = await sendPasswordResetEmail(
-                user.email,
-                resetToken,
-                user.display_name || user.username || 'Korisniče'
-            );
-
-            if (result.success) {
-                console.log('✅ Password reset email poslat na:', user.email);
-                setSent(true);
-                setTimeout(() => {
-                    onClose();
-                    setSent(false);
-                }, 3000);
-            } else {
-                // Fallback - prikaži link u konzoli ako Resend ne radi
-                const resetLink = `${window.location.origin}/reset-password?token=${resetToken}`;
-                console.log('='.repeat(60));
-                console.log('⚠️ RESEND NIJE KONFIGURISAN - PASSWORD RESET LINK:');
-                console.log('='.repeat(60));
-                console.log(`Email: ${user.email}`);
-                console.log(`Link: ${resetLink}`);
-                console.log('='.repeat(60));
-                console.log('');
-                console.log('📧 Da bi email radio, dodaj VITE_RESEND_API_KEY u .env fajl');
-                console.log('🔗 Registruj se na: https://resend.com (besplatno)');
-                console.log('');
-
-                setSent(true);
-                setTimeout(() => {
-                    onClose();
-                    setSent(false);
-                }, 3000);
-            }
+            // Server generates a 6-digit PIN, stores it, and emails it to the
+            // user. The admin never sees the code.
+            await auth.requestPasswordReset(user.email);
+            setSent(true);
+            setTimeout(() => {
+                onClose();
+                setSent(false);
+            }, 3000);
         } catch (err: any) {
             console.error('Greška:', err);
-            setError('Greška prilikom slanja emaila. Pokušajte ponovo.');
+            setError(err?.message || 'Greška prilikom slanja emaila. Pokušajte ponovo.');
         } finally {
             setSending(false);
         }
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Pošalji Link za Resetovanje Lozinke">
+        <Modal isOpen={isOpen} onClose={onClose} title="Pošalji Kod za Resetovanje Lozinke">
             <div className="space-y-4">
                 {error && (
                     <div className="flex items-center space-x-2 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl">
@@ -89,10 +53,10 @@ export default function SendPasswordResetModal({ isOpen, onClose, user }: SendPa
                             <Check className="text-green-600" size={32} />
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                            Email Poslat!
+                            Kod Poslat!
                         </h3>
                         <p className="text-gray-600 dark:text-gray-400 text-center">
-                            Link za resetovanje lozinke je poslat na email adresu korisnika.
+                            Korisniku je poslat 6-cifreni kod za resetovanje lozinke na email.
                         </p>
                     </div>
                 ) : (
@@ -102,23 +66,17 @@ export default function SendPasswordResetModal({ isOpen, onClose, user }: SendPa
                                 <Mail className="text-blue-600 mt-0.5" size={20} />
                                 <div>
                                     <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                                        Korisniku će biti poslat email
+                                        Korisniku će biti poslat email sa kodom
                                     </h4>
                                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                                         Email adresa: <strong>{user.email}</strong>
                                     </p>
                                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Korisnik će dobiti link za resetovanje lozinke koji je validan 24 sata.
+                                        Korisnik dobija 6-cifreni kod (važi 15 minuta) koji unosi na
+                                        stranici za resetovanje lozinke da postavi novu lozinku.
                                     </p>
                                 </div>
                             </div>
-                        </div>
-
-                        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-2xl p-4">
-                            <p className="text-sm text-yellow-800 dark:text-yellow-400">
-                                <strong>Napomena:</strong> U trenutnoj verziji (development), link će biti prikazan u konzoli.
-                                Nakon deploy-a, email će biti automatski poslat korisniku.
-                            </p>
                         </div>
 
                         <div className="flex justify-end space-x-3 mt-6">
@@ -134,7 +92,7 @@ export default function SendPasswordResetModal({ isOpen, onClose, user }: SendPa
                                 ) : (
                                     <>
                                         <Send size={18} className="mr-2" />
-                                        Pošalji Email
+                                        Pošalji Kod
                                     </>
                                 )}
                             </Button>

@@ -13,9 +13,14 @@ export interface RemoteDevice {
   is_playing: boolean;
   song_title: string | null;
   song_artist: string | null;
+  song_artwork: string | null;
+  now_playing_title: string | null;
+  now_playing_cover: string | null;
+  now_playing_is_jingle?: boolean;
   song_state: SongState;
   song_queue: SongInfo[] | null;
   saved_playlist_count: number;
+  volume: number; // 0-100
   last_seen: string;
 }
 
@@ -46,11 +51,16 @@ interface UseRemoteSessionOptions {
   enabled: boolean;
   currentStation: RadioStation | null;
   isPlaying: boolean;
+  nowPlayingTitle: string;
+  nowPlayingCover: string | null;
+  nowPlayingIsJingle: boolean;
   songState: SongState;
   currentSong: SongInfo | null;
   songQueue: SongInfo[];
   postRadioQueue: SongInfo[];
   savedPlaylistCount: number;
+  volume: number; // 0..1
+  onSetVolume?: (volume: number) => void;
   onPlayStation: (station: RadioStation, allStations: RadioStation[]) => void;
   onPause: () => void;
   onResume: () => void;
@@ -69,11 +79,16 @@ export function useRemoteSession({
   enabled,
   currentStation,
   isPlaying,
+  nowPlayingTitle,
+  nowPlayingCover,
+  nowPlayingIsJingle,
   songState,
   currentSong,
   songQueue,
   postRadioQueue,
   savedPlaylistCount,
+  volume,
+  onSetVolume,
   onPlayStation,
   onPause,
   onResume,
@@ -102,10 +117,15 @@ export function useRemoteSession({
   const savedPlaylistCountRef = useRef(savedPlaylistCount);
   const currentStationRef = useRef(currentStation);
   const isPlayingRef = useRef(isPlaying);
+  const nowPlayingTitleRef = useRef(nowPlayingTitle);
+  const nowPlayingCoverRef = useRef(nowPlayingCover);
+  const nowPlayingIsJingleRef = useRef(nowPlayingIsJingle);
   const songStateRef = useRef(songState);
   const currentSongRef = useRef(currentSong);
   const songQueueRef = useRef(songQueue);
   const postRadioQueueRef = useRef(postRadioQueue);
+  const volumeRef = useRef(volume);
+  const onSetVolumeRef = useRef(onSetVolume);
   const allStationsRef = useRef(allStations);
   const onPlayStationRef = useRef(onPlayStation);
   const onPauseRef = useRef(onPause);
@@ -123,10 +143,15 @@ export function useRemoteSession({
   savedPlaylistCountRef.current = savedPlaylistCount;
   currentStationRef.current = currentStation;
   isPlayingRef.current = isPlaying;
+  nowPlayingTitleRef.current = nowPlayingTitle;
+  nowPlayingCoverRef.current = nowPlayingCover;
+  nowPlayingIsJingleRef.current = nowPlayingIsJingle;
   songStateRef.current = songState;
   currentSongRef.current = currentSong;
   songQueueRef.current = songQueue;
   postRadioQueueRef.current = postRadioQueue;
+  volumeRef.current = volume;
+  onSetVolumeRef.current = onSetVolume;
   allStationsRef.current = allStations;
   onPlayStationRef.current = onPlayStation;
   onPauseRef.current = onPause;
@@ -177,6 +202,9 @@ export function useRemoteSession({
       const stationId = command.slice(18);
       const station = allStationsRef.current.find(s => s.id === stationId);
       if (station) onScheduleSwitchRef.current?.(0, station);
+    } else if (command.startsWith('volume:')) {
+      const v = parseInt(command.slice(7), 10);
+      if (!isNaN(v)) onSetVolumeRef.current?.(Math.max(0, Math.min(100, v)) / 100);
     } else if (command === 'resume_saved_now') {
       onResumeSavedRef.current?.(true);
     } else if (command === 'resume_saved_after') {
@@ -204,9 +232,14 @@ export function useRemoteSession({
         is_playing: isPlayingRef.current,
         song_title: song?.title ?? null,
         song_artist: song?.artist ?? null,
+        song_artwork: song?.artwork ?? null,
+        now_playing_title: nowPlayingTitleRef.current || null,
+        now_playing_cover: nowPlayingCoverRef.current || null,
+        now_playing_is_jingle: nowPlayingIsJingleRef.current,
         song_state: songStateRef.current,
         song_queue: queueItems.length > 0 ? JSON.stringify(queueItems) : null,
         saved_playlist_count: savedPlaylistCountRef.current,
+        volume: Math.round(volumeRef.current * 100),
       });
 
       if (deviceType.current === 'desktop' && !deviceNumberInitialized.current) {
@@ -248,7 +281,7 @@ export function useRemoteSession({
           if (s.song_queue) {
             try { parsedQueue = JSON.parse(s.song_queue); } catch {}
           }
-          return { ...s, is_playing: !!s.is_playing, song_queue: parsedQueue, saved_playlist_count: parseInt(String(s.saved_playlist_count ?? 0), 10) };
+          return { ...s, is_playing: !!s.is_playing, now_playing_is_jingle: s.now_playing_is_jingle === true || s.now_playing_is_jingle === 1 || s.now_playing_is_jingle === '1', song_queue: parsedQueue, saved_playlist_count: parseInt(String(s.saved_playlist_count ?? 0), 10), volume: parseInt(String(s.volume ?? 70), 10) };
         });
 
       if (JSON.stringify(sessions) !== JSON.stringify(sessionsRef.current)) {

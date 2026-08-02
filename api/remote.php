@@ -27,10 +27,15 @@ try {
 try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN device_number INT DEFAULT 0 AFTER device_name"); } catch (Exception $e) {}
 try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN song_title VARCHAR(255) DEFAULT NULL"); } catch (Exception $e) {}
 try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN song_artist VARCHAR(255) DEFAULT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN song_artwork VARCHAR(500) DEFAULT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN now_playing_title VARCHAR(255) DEFAULT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN now_playing_cover VARCHAR(500) DEFAULT NULL"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN now_playing_is_jingle TINYINT(1) DEFAULT 0"); } catch (Exception $e) {}
 try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN song_state VARCHAR(20) DEFAULT 'idle'"); } catch (Exception $e) {}
 try { $db->exec("ALTER TABLE remote_sessions MODIFY COLUMN pending_command TEXT NULL"); } catch (Exception $e) {}
 try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN song_queue TEXT NULL"); } catch (Exception $e) {}
 try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN saved_playlist_count INT DEFAULT 0"); } catch (Exception $e) {}
+try { $db->exec("ALTER TABLE remote_sessions ADD COLUMN volume INT DEFAULT 70"); } catch (Exception $e) {}
 
 // Self-heal: create remote_commands queue table (replaces single pending_command field)
 try {
@@ -67,7 +72,7 @@ try {
 if ($method === 'GET' && $action === 'status') {
     $deviceId = $_GET['device_id'] ?? '';
 
-    $stmt = $db->prepare("SELECT device_id, device_type, device_name, device_number, station_id, station_name, is_playing, song_title, song_artist, song_state, song_queue, saved_playlist_count, last_seen FROM remote_sessions WHERE user_id = ? ORDER BY device_number ASC, last_seen DESC");
+    $stmt = $db->prepare("SELECT device_id, device_type, device_name, device_number, station_id, station_name, is_playing, song_title, song_artist, song_artwork, now_playing_title, now_playing_cover, now_playing_is_jingle, song_state, song_queue, saved_playlist_count, volume, last_seen FROM remote_sessions WHERE user_id = ? ORDER BY device_number ASC, last_seen DESC");
     $stmt->execute([$userId]);
     $sessions = $stmt->fetchAll();
 
@@ -100,9 +105,14 @@ if ($method === 'POST' && $action === 'heartbeat') {
     $isPlaying = isset($data['is_playing']) ? (int)$data['is_playing'] : 0;
     $songTitle = $data['song_title'] ?? null;
     $songArtist = $data['song_artist'] ?? null;
+    $songArtwork = $data['song_artwork'] ?? null;
+    $nowPlayingTitle = $data['now_playing_title'] ?? null;
+    $nowPlayingCover = $data['now_playing_cover'] ?? null;
+    $nowPlayingIsJingle = isset($data['now_playing_is_jingle']) ? (int)(bool)$data['now_playing_is_jingle'] : 0;
     $songState = $data['song_state'] ?? 'idle';
     $songQueue = $data['song_queue'] ?? null;
     $savedPlaylistCount = isset($data['saved_playlist_count']) ? (int)$data['saved_playlist_count'] : 0;
+    $volume = isset($data['volume']) ? max(0, min(100, (int)$data['volume'])) : 70;
 
     if (!$deviceId) sendJSON(['error' => 'device_id required'], 400);
 
@@ -120,8 +130,8 @@ if ($method === 'POST' && $action === 'heartbeat') {
     }
 
     $stmt = $db->prepare("
-        INSERT INTO remote_sessions (device_id, user_id, device_type, device_name, device_number, station_id, station_name, is_playing, song_title, song_artist, song_state, song_queue, saved_playlist_count, last_seen)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        INSERT INTO remote_sessions (device_id, user_id, device_type, device_name, device_number, station_id, station_name, is_playing, song_title, song_artist, song_artwork, now_playing_title, now_playing_cover, now_playing_is_jingle, song_state, song_queue, saved_playlist_count, volume, last_seen)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
         ON DUPLICATE KEY UPDATE
             user_id = VALUES(user_id),
             device_type = VALUES(device_type),
@@ -131,13 +141,18 @@ if ($method === 'POST' && $action === 'heartbeat') {
             is_playing = VALUES(is_playing),
             song_title = VALUES(song_title),
             song_artist = VALUES(song_artist),
+            song_artwork = VALUES(song_artwork),
+            now_playing_title = VALUES(now_playing_title),
+            now_playing_cover = VALUES(now_playing_cover),
+            now_playing_is_jingle = VALUES(now_playing_is_jingle),
             song_state = VALUES(song_state),
             song_queue = VALUES(song_queue),
             saved_playlist_count = VALUES(saved_playlist_count),
+            volume = VALUES(volume),
             last_seen = NOW(),
             device_number = IF(device_number = 0, VALUES(device_number), device_number)
     ");
-    $stmt->execute([$deviceId, $userId, $deviceType, $deviceName, $deviceNumber, $stationId, $stationName, $isPlaying, $songTitle, $songArtist, $songState, $songQueue, $savedPlaylistCount]);
+    $stmt->execute([$deviceId, $userId, $deviceType, $deviceName, $deviceNumber, $stationId, $stationName, $isPlaying, $songTitle, $songArtist, $songArtwork, $nowPlayingTitle, $nowPlayingCover, $nowPlayingIsJingle, $songState, $songQueue, $savedPlaylistCount, $volume]);
 
     // Return device info + oldest pending command from queue
     $rowStmt = $db->prepare("SELECT device_number, device_name FROM remote_sessions WHERE device_id = ?");
@@ -169,6 +184,13 @@ if ($method === 'POST' && $action === 'command') {
     $stmt = $db->prepare("SELECT device_id FROM remote_sessions WHERE device_id = ? AND user_id = ?");
     $stmt->execute([$targetDeviceId, $userId]);
     if (!$stmt->fetch()) sendJSON(['error' => 'Target device not found'], 404);
+
+    // Volume commands: only the latest value matters — replace any queued ones
+    // so dragging the slider doesn't pile up a backlog the device replays late.
+    if (strpos($command, 'volume:') === 0) {
+        $del = $db->prepare("DELETE FROM remote_commands WHERE device_id = ? AND user_id = ? AND executed = 0 AND command LIKE 'volume:%'");
+        $del->execute([$targetDeviceId, $userId]);
+    }
 
     // Insert into command queue (no more overwriting!)
     $stmt = $db->prepare("INSERT INTO remote_commands (device_id, user_id, command, command_id) VALUES (?, ?, ?, ?)");

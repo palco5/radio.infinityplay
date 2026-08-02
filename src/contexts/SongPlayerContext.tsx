@@ -566,6 +566,16 @@ export function SongPlayerProvider({ children }: { children: ReactNode }) {
                 if (gen !== songGenRef.current) { clearTimeout(totalTimer); try { e.target.destroy(); } catch {} resolve(false); return; }
                 ytPlayerRef.current = e.target;
                 try { e.target.playVideo(); } catch {}
+                // Mobile browsers sometimes silently ignore the first playVideo() on a
+                // freshly-created (muted) player, leaving it stuck in 'loading' forever.
+                // Retry a few times — harmless no-op once it's actually PLAYING/BUFFERING.
+                [300, 900, 1800, 3000].forEach(ms => setTimeout(() => {
+                  if (gen !== songGenRef.current) return;
+                  try {
+                    const st = e.target.getPlayerState?.();
+                    if (st !== 1 && st !== 3) e.target.playVideo();
+                  } catch { /* ignore */ }
+                }, ms));
                 // Stay 'loading' until state=1 — muted autoplay fires reliably even without gesture context
               },
               onStateChange: async (e: any) => {

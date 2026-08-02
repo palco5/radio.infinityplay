@@ -2,7 +2,8 @@ import { createContext, useContext, useState, useRef, useCallback, ReactNode, us
 import { flushSync } from 'react-dom';
 import { RadioStation, UserJingle } from '../types';
 import { useAuth } from './AuthContext';
-import { profiles as profilesApi, nowplaying as nowplayingApi } from '../lib/api';
+import { profiles as profilesApi, nowplaying as nowplayingApi, blacklist as blacklistApi, BlacklistEntry } from '../lib/api';
+import { isTrackBlocked, splitTitle } from '../lib/blacklist';
 import { JingleRotationManager } from '../lib/jingleManager';
 
 interface AudioContextType {
@@ -11,6 +12,8 @@ interface AudioContextType {
   volume: number;
   nowPlayingTitle: string;
   nowPlayingCover: string | null;
+  nowPlayingPrevious: { title: string; cover: string | null } | null;
+  nowPlayingIsJingle: boolean;
   playStation: (station: RadioStation) => void;
   pause: () => void;
   setVolume: (volume: number) => void;
@@ -19,6 +22,16 @@ interface AudioContextType {
   fadeRadioTo: (volume: number, duration?: number) => void;
   setSongTransitionCallback: (cb: (() => void) | null) => void;
   setSongActive: (active: boolean) => void;
+  // Per-user blacklist (blocked songs / artists)
+  blacklist: BlacklistEntry[];
+  isNowBlocked: boolean;
+  blockCurrentSong: () => Promise<void>;
+  blockCurrentArtist: () => Promise<void>;
+  blockSongByTitle: (fullTitle: string) => Promise<void>;
+  blockArtistByTitle: (fullTitle: string) => Promise<void>;
+  skipRadioTrack: () => Promise<{ ok?: boolean } | null>;
+  unblock: (id: string) => Promise<void>;
+  refreshBlacklist: () => Promise<void>;
 }
 
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
@@ -30,6 +43,21 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [volume, setVolumeState] = useState(0.7);
   const [nowPlayingTitle, setNowPlayingTitle] = useState('');
   const [nowPlayingCover, setNowPlayingCover] = useState<string | null>(null);
+  const [nowPlayingPrevious, setNowPlayingPrevious] = useState<{ title: string; cover: string | null } | null>(null);
+  const [nowPlayingIsJingle, setNowPlayingIsJingle] = useState(false);
+
+  // Per-user blacklist state
+  const [blacklist, setBlacklist] = useState<BlacklistEntry[]>([]);
+  const [isNowBlocked, setIsNowBlocked] = useState(false);
+  const nowPlayingTitleRef = useRef('');
+  const isNowBlockedRef = useRef(false);
+  const lastSkipTitleRef = useRef('');
+  const lastTitleRef = useRef(''); // last radio title seen, to derive "previous"
+  const lastCoverRef = useRef<string | null>(null); // its cover, so "previous" carries artwork too
+  // The track the user just blocked while it was playing is allowed to finish;
+  // only FUTURE plays of a blocked track are muted (on shared stations).
+  const graceTitleRef = useRef('');
+  nowPlayingTitleRef.current = nowPlayingTitle;
 
   // Mirror volume state in a ref so async callbacks always read the live value
   const volumeRef = useRef(0.7);
@@ -42,6 +70,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const audioRef1 = useRef<HTMLAudioElement | null>(null);
   const audioRef2 = useRef<HTMLAudioElement | null>(null);
   const activeDeckRef = useRef<1 | 2>(1);
+
+  // Short "whoosh" sound played on every station change (a sonic transition)
+  const transitionAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const userIdRef = useRef<string | null>(null);
   const listeningStartTime = useRef<number | null>(null);
@@ -102,6 +133,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     audioRef1.current.volume = volumeRef.current;
     audioRef2.current.volume = volumeRef.current;
 
+    // Preload the station-change transition sound so it fires instantly
+    if (!transitionAudioRef.current) {
+      const t = new Audio(`${import.meta.env.BASE_URL}transition.mp3`);
+      t.preload = 'auto';
+      t.load();
+      transitionAudioRef.current = t;
+    }
+
     // Audio timeupdate events fire even in background tabs (media is exempt from throttling).
     // Use them to drive ICY polling so queued songs and jingles trigger on time in background.
     const handleIcyPoll = () => {
@@ -119,6 +158,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audioRef2.current?.removeEventListener('timeupdate', handleIcyPoll);
       if (audioRef1.current) { audioRef1.current.pause(); audioRef1.current.src = ''; }
       if (audioRef2.current) { audioRef2.current.pause(); audioRef2.current.src = ''; }
+      if (transitionAudioRef.current) { transitionAudioRef.current.pause(); transitionAudioRef.current.src = ''; }
       if (jingleCheckIntervalRef.current) clearInterval(jingleCheckIntervalRef.current);
       if (jingleAudioRef.current) { jingleAudioRef.current.pause(); jingleAudioRef.current.src = ''; }
       if (songPollIntervalRef.current) clearInterval(songPollIntervalRef.current);
@@ -139,6 +179,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (!isPlaying || !currentStation) {
       setNowPlayingTitle('');
       setNowPlayingCover(null);
+      setNowPlayingPrevious(null);
+      setNowPlayingIsJingle(false);
+      lastTitleRef.current = '';
+      lastCoverRef.current = null;
       return;
     }
 
@@ -146,14 +190,174 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const fetchInfo = async () => {
       const info = await nowplayingApi.getInfo(currentStation.stream_url);
       if (cancelled) return;
+      // "Previous track" isn't available from the stream/MediaCP (the :2020 API
+      // isn't reachable from the backend, and next/upcoming doesn't exist), so
+      // derive it here: when the current title changes, the one that just ended
+      // becomes the previous. Uses the already-cleaned title, so it's tidy.
+      // A jingle (station ID/promo the AutoDJ drops in) is shown by name with a
+      // mic icon, and is deliberately kept OUT of the track history: when one
+      // plays we reveal the song that ran *before* it as "previous", but never
+      // record the jingle itself, so it never appears as the previous track.
+      const isJingle = info.isJingle === true;
+      if (info.title && info.title !== lastTitleRef.current) {
+        if (lastTitleRef.current) setNowPlayingPrevious({ title: lastTitleRef.current, cover: lastCoverRef.current });
+        if (!isJingle) {
+          lastTitleRef.current = info.title;
+          lastCoverRef.current = info.coverart;
+        }
+      }
       setNowPlayingTitle(info.title);
-      setNowPlayingCover(info.coverart);
+      setNowPlayingCover(isJingle ? null : info.coverart);
+      setNowPlayingIsJingle(isJingle);
     };
 
+    // Poll faster when the user has a blacklist so a blocked track is caught
+    // (and muted) sooner — a shared live stream can only be filtered locally.
+    const pollMs = blacklist.length > 0 ? 7000 : 15000;
     fetchInfo();
-    const id = setInterval(fetchInfo, 15000);
+    const id = setInterval(fetchInfo, pollMs);
     return () => { cancelled = true; clearInterval(id); };
-  }, [isPlaying, currentStation]);
+  }, [isPlaying, currentStation, blacklist.length]);
+
+  // Reset the derived "previous track" when switching stations so it never
+  // carries the old station's last song over to the new one.
+  useEffect(() => {
+    lastTitleRef.current = '';
+    lastCoverRef.current = null;
+    setNowPlayingPrevious(null);
+    setNowPlayingIsJingle(false);
+  }, [currentStation?.id]);
+
+  // Load this user's blacklist on sign-in.
+  const refreshBlacklist = useCallback(async () => {
+    if (!userIdRef.current) { setBlacklist([]); return; }
+    try {
+      setBlacklist(await blacklistApi.getAll());
+    } catch (e) {
+      console.error('Failed to load blacklist:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) refreshBlacklist();
+    else setBlacklist([]);
+  }, [user, refreshBlacklist]);
+
+  // Enforce the blacklist locally for THIS user:
+  //  - Personal "Moj Radio" station → a skip IS per-user, so really advance the
+  //    AutoDJ via MediaCP skip-track (mute briefly to cover the transition).
+  //  - Shared genre station → we can't skip the shared stream, so the track the
+  //    user is currently hearing is left to finish (it's just added to the
+  //    blacklist); FUTURE plays of any blocked track are muted for this user.
+  useEffect(() => {
+    const station = currentStation;
+    const isMoj = !!station && station.id.startsWith('moj-radio-');
+    const blocked =
+      isPlaying && !!station && !isSongActiveRef.current &&
+      isTrackBlocked(nowPlayingTitle, blacklist);
+    // Don't mute the exact track that was playing when the user blocked it —
+    // let it finish; only future occurrences are muted.
+    const inGrace = blocked && nowPlayingTitle === graceTitleRef.current;
+
+    if (blocked && isMoj) {
+      if (!isNowBlockedRef.current) {
+        isNowBlockedRef.current = true;
+        setIsNowBlocked(true);
+        fadeRadioTo(0, 500);
+      }
+      if (lastSkipTitleRef.current !== nowPlayingTitle) {
+        lastSkipTitleRef.current = nowPlayingTitle;
+        blacklistApi.skipMojRadio(station!.stream_url).catch(() => {});
+      }
+    } else if (blocked && !isMoj && !inGrace) {
+      if (!isNowBlockedRef.current) {
+        isNowBlockedRef.current = true;
+        setIsNowBlocked(true);
+        fadeRadioTo(0, 500);
+      }
+    } else if (isNowBlockedRef.current) {
+      isNowBlockedRef.current = false;
+      setIsNowBlocked(false);
+      lastSkipTitleRef.current = '';
+      if (isPlaying && !isSongActiveRef.current) fadeRadioTo(volumeRef.current, 800);
+    }
+
+    // Once the graced track is no longer what's playing, drop the grace so it
+    // gets muted if it ever comes around again.
+    if (graceTitleRef.current && nowPlayingTitle !== graceTitleRef.current) {
+      graceTitleRef.current = '';
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowPlayingTitle, blacklist, isPlaying, currentStation]);
+
+  // Block a song from an explicit "Artist - Title" string (used by the mobile
+  // remote control, which blocks what's playing on the selected local device).
+  const blockSongByTitle = useCallback(async (fullTitle: string) => {
+    const { artist, title } = splitTitle(fullTitle);
+    if (!title) return;
+    graceTitleRef.current = fullTitle; // let this exact track finish if it's playing here
+    try {
+      const entry = await blacklistApi.blockSong(artist, title);
+      if (entry) setBlacklist(prev => [entry, ...prev]);
+    } catch (e) {
+      console.error('Failed to block song:', e);
+    }
+  }, []);
+
+  const blockArtistByTitle = useCallback(async (fullTitle: string) => {
+    const { artist } = splitTitle(fullTitle);
+    if (!artist) return;
+    graceTitleRef.current = fullTitle;
+    try {
+      const entry = await blacklistApi.blockArtist(artist);
+      if (entry) setBlacklist(prev => [entry, ...prev]);
+    } catch (e) {
+      console.error('Failed to block artist:', e);
+    }
+  }, []);
+
+  // Block the song / artist currently playing on the radio (local now-playing).
+  const blockCurrentSong = useCallback(() => blockSongByTitle(nowPlayingTitleRef.current), [blockSongByTitle]);
+  const blockCurrentArtist = useCallback(() => blockArtistByTitle(nowPlayingTitleRef.current), [blockArtistByTitle]);
+
+  // Force the active radio deck to reconnect to the live point — flushes the
+  // few seconds of already-buffered audio so a skip is heard promptly instead
+  // of only after the old buffer drains.
+  const reconnectRadio = useCallback(() => {
+    const st = currentStationRef.current;
+    if (!st || !isPlayingRef.current) return;
+    const deck = activeDeckRef.current === 1 ? audioRef1.current : audioRef2.current;
+    if (!deck) return;
+    const url = st.stream_url;
+    try {
+      deck.pause();
+      deck.src = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now(); // cache-bust → fresh connection at live edge
+      deck.load();
+      deck.volume = volumeRef.current;
+      deck.play().catch(() => {});
+    } catch { /* ignore */ }
+  }, []);
+
+  // Manually skip the current track on the user's personal Moj Radio (MediaCP).
+  // No-op on shared stations — a shared stream can't be skipped per-listener.
+  // Returns the API result so the UI can confirm success.
+  const skipRadioTrack = useCallback(async (): Promise<{ ok?: boolean } | null> => {
+    const st = currentStationRef.current;
+    if (!st || !st.id.startsWith('moj-radio-')) return null;
+    const res = await blacklistApi.skipMojRadio(st.stream_url).catch(() => null);
+    // Give MediaCP a moment to advance, then reconnect so the new song is heard.
+    if (res && res.ok) setTimeout(() => reconnectRadio(), 1800);
+    return res;
+  }, [reconnectRadio]);
+
+  const unblock = useCallback(async (id: string) => {
+    try {
+      await blacklistApi.remove(id);
+      setBlacklist(prev => prev.filter(e => e.id !== id));
+    } catch (e) {
+      console.error('Failed to unblock:', e);
+    }
+  }, []);
 
   const updateListeningTime = async () => {
     if (listeningStartTime.current && userIdRef.current) {
@@ -329,8 +533,25 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     songTitleRef.current = title;
   };
 
+  // Plays the transition "whoosh" over whatever is happening. Uses its own audio
+  // element so it overlays the crossfade and is never ducked. Respects mute.
+  const playTransitionSound = useCallback(() => {
+    const vol = volumeRef.current;
+    if (vol <= 0) return; // muted — stay silent
+    const el = transitionAudioRef.current;
+    if (!el) return;
+    try {
+      el.volume = Math.min(1, vol);
+      el.currentTime = 0;
+      el.play().catch(() => { /* autoplay blocked or interrupted — ignore */ });
+    } catch { /* ignore */ }
+  }, []);
+
   const playStation = useCallback(async (station: RadioStation) => {
     if (currentStationRef.current?.id === station.id && isPlayingRef.current) return;
+
+    // Sonic transition on every station change / start, no matter how it was triggered
+    playTransitionSound();
 
     const gen = ++playGenRef.current;
     const targetVolume = volumeRef.current;
@@ -599,7 +820,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   return (
     <AudioContext.Provider
-      value={{ currentStation, isPlaying, volume, nowPlayingTitle, nowPlayingCover, playStation, pause, setVolume, playJingle, updateJingles, fadeRadioTo, setSongTransitionCallback, setSongActive }}
+      value={{ currentStation, isPlaying, volume, nowPlayingTitle, nowPlayingCover, nowPlayingPrevious, nowPlayingIsJingle, playStation, pause, setVolume, playJingle, updateJingles, fadeRadioTo, setSongTransitionCallback, setSongActive, blacklist, isNowBlocked, blockCurrentSong, blockCurrentArtist, blockSongByTitle, blockArtistByTitle, skipRadioTrack, unblock, refreshBlacklist }}
     >
       {children}
     </AudioContext.Provider>

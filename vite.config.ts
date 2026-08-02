@@ -46,4 +46,18 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   base: '/',
+  // Dev-only: forward /api to the live backend from the Vite server itself, so
+  // the browser only ever talks to localhost. This sidesteps the CORS wall the
+  // live backend puts up against localhost origins (which caused "Failed to
+  // fetch" on login), and mirrors production where the frontend and /api share
+  // an origin. Paired with VITE_API_URL=/api in .env.development.local.
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://radio.infinityplay.rs',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
+  },
 });

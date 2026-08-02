@@ -60,13 +60,31 @@ CREATE TABLE IF NOT EXISTS profiles (
   
   -- Admin
   is_admin BOOLEAN DEFAULT FALSE,
-  
+
+  -- Email verification (blocking): 0 = not verified, 1 = verified
+  email_verified TINYINT NOT NULL DEFAULT 0,
+
   -- Timestamps
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  
+
   INDEX idx_email (email),
   INDEX idx_is_admin (is_admin)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- EMAIL_CODES TABELA (PIN za verifikaciju emaila i reset lozinke)
+-- ============================================
+CREATE TABLE IF NOT EXISTS email_codes (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  code_hash VARCHAR(255) NOT NULL,            -- bcrypt hash of the 6-digit PIN
+  purpose VARCHAR(32) NOT NULL,               -- 'verify_email' | 'password_reset'
+  attempts INT NOT NULL DEFAULT 0,            -- wrong tries; locks at 5
+  used TINYINT NOT NULL DEFAULT 0,            -- 1 once consumed/invalidated
+  expires_at DATETIME NOT NULL,               -- typically now + 15 min
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_email_purpose (email, purpose)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
@@ -124,6 +142,26 @@ CREATE TABLE IF NOT EXISTS favorites (
   
   FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE,
   FOREIGN KEY (station_id) REFERENCES stations(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- 3b. USER_BLACKLIST TABELA (per-user blocked songs / artists)
+-- ============================================
+-- A blacklist entry blocks either a whole artist (block_type='artist', title
+-- NULL) or a single song (block_type='song', artist + title). Enforcement is
+-- per-user and client-side: a shared live stream can't be filtered at the
+-- source for one listener, so the player mutes blocked tracks locally.
+CREATE TABLE IF NOT EXISTS user_blacklist (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  block_type VARCHAR(10) NOT NULL,
+  artist VARCHAR(255) NOT NULL DEFAULT '',
+  title VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  INDEX idx_user (user_id),
+
+  FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================

@@ -16,18 +16,11 @@ if ($method === 'POST') {
         sendJSON(['error' => 'Missing required fields'], 400);
     }
 
-    // Email headers
-    $headers = "MIME-Version: 1.0" . "\r\n";
-    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-    $headers .= 'From: InfinityPlay Radio <support@infinityplay.rs>' . "\r\n";
-    $headers .= 'Reply-To: support@infinityplay.rs' . "\r\n";
-    $headers .= 'X-Mailer: PHP/' . phpversion();
-
-    // Use PHP mail() function which works on standard hosting environments like Loopia
-    if (mail($to, $subject, $html, $headers)) {
+    // sendAppMail prefers authenticated SMTP (reliable delivery to Gmail etc.)
+    // and falls back to PHP mail() when SMTP is not configured.
+    if (sendAppMail($to, $subject, $html)) {
         sendJSON(['success' => true, 'message' => 'Email sent successfully']);
     } else {
-        // Fallback or error logging
         error_log("Failed to send email to $to");
         sendJSON(['error' => 'Failed to send email'], 500);
     }

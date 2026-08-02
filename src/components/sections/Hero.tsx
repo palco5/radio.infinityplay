@@ -135,8 +135,12 @@ export default function Hero() {
             <span className="font-semibold text-infinity-green-600 dark:text-infinity-green-500">Radio za vaš:</span> kafić, restoran, hotel, spa centar...
           </p>
 
-          {/* Mobile Marquee */}
-          <div className="relative w-screen -ml-4 md:-ml-8 overflow-hidden my-6 z-0">
+          {/* Mobile Marquee — full-bleed: centred on the (centred) container and
+              exactly 100vw wide, so the card strip always reaches BOTH screen
+              edges. The old "-ml-4" only cancelled the container padding, which
+              broke on tablet / zoomed widths where the container is narrower
+              than the viewport — leaving an empty strip on the left. */}
+          <div className="relative w-screen left-1/2 -translate-x-1/2 overflow-hidden my-6 z-0">
             <style>{`
                @keyframes ip-marquee {
                  0%   { transform: translate3d(0, 0, 0); }

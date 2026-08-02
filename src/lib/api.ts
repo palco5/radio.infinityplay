@@ -23,11 +23,12 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
 
     if (!response.ok) {
         let errorMessage = 'Request failed';
+        let errorData: any = null;
         try {
             const text = await response.text();
             try {
-                const data = JSON.parse(text);
-                errorMessage = data.error || data.message || JSON.stringify(data);
+                errorData = JSON.parse(text);
+                errorMessage = errorData.error || errorData.message || JSON.stringify(errorData);
             } catch {
                 // Not JSON, use text (truncate if too long)
                 errorMessage = text.substring(0, 200) || `HTTP Error ${response.status} ${response.statusText}`;
@@ -35,15 +36,29 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
         } catch (e) {
             errorMessage = `HTTP Error ${response.status} ${response.statusText}`;
         }
-        throw new Error(errorMessage);
+        if (errorData && errorData.debug_code) {
+            // Local dev only (backend EMAIL_CODE_DEBUG): show the PIN in console.
+            console.log(`%c[DEV] PIN kod: ${errorData.debug_code}`, 'font-size:18px;font-weight:bold;color:#10b981');
+        }
+        const err = new Error(errorMessage) as Error & { status?: number; data?: any };
+        err.status = response.status;
+        err.data = errorData;
+        throw err;
     }
 
-    return response.json();
+    const data = await response.json();
+    if (data && data.debug_code) {
+        // Local dev only (backend EMAIL_CODE_DEBUG): show the PIN in console.
+        console.log(`%c[DEV] PIN kod: ${data.debug_code}`, 'font-size:18px;font-weight:bold;color:#10b981');
+    }
+    return data;
 }
 
 // Auth API
 export const auth = {
     async register(email: string, password: string, first_name: string, last_name: string, phone_number?: string, country_code?: string, venue_name?: string) {
+        // Returns { requiresVerification: true, email } — no token until the
+        // email PIN is verified via verifyEmail().
         const data = await apiCall('/auth.php?path=register', {
             method: 'POST',
             body: JSON.stringify({ email, password, first_name, last_name, phone_number, country_code, venue_name }),
@@ -54,6 +69,48 @@ export const auth = {
         }
 
         return data;
+    },
+
+    async verifyEmail(email: string, code: string) {
+        const data = await apiCall('/auth.php?path=verify-email', {
+            method: 'POST',
+            body: JSON.stringify({ email, code }),
+        });
+
+        if (data.token) {
+            localStorage.setItem('auth_token', data.token);
+        }
+
+        return data;
+    },
+
+    async resendCode(email: string) {
+        return apiCall('/auth.php?path=resend-code', {
+            method: 'POST',
+            body: JSON.stringify({ email }),
+        });
+    },
+
+    async requestPasswordReset(email: string) {
+        return apiCall('/auth.php?path=request-reset', {
+            method: 'POST',
+            body: JSON.stringify({ email }),
+        });
+    },
+
+    async verifyResetCode(email: string, code: string) {
+        // Validates the reset PIN without consuming it (wizard PIN step).
+        return apiCall('/auth.php?path=verify-reset-code', {
+            method: 'POST',
+            body: JSON.stringify({ email, code }),
+        });
+    },
+
+    async resetPassword(email: string, code: string, newPassword: string) {
+        return apiCall('/auth.php?path=reset-password', {
+            method: 'POST',
+            body: JSON.stringify({ email, code, newPassword }),
+        });
     },
 
     async login(email: string, password: string) {
@@ -183,6 +240,47 @@ export const favorites = {
     },
 };
 
+// Blacklist API — per-user blocked songs / artists
+export interface BlacklistEntry {
+    id: string;
+    block_type: 'song' | 'artist';
+    artist: string;
+    title: string | null;
+    created_at?: string;
+}
+
+export const blacklist = {
+    async getAll(): Promise<BlacklistEntry[]> {
+        const data = await apiCall('/blacklist.php');
+        return data.blacklist ?? [];
+    },
+    async blockSong(artist: string, title: string): Promise<BlacklistEntry> {
+        const data = await apiCall('/blacklist.php', {
+            method: 'POST',
+            body: JSON.stringify({ block_type: 'song', artist, title }),
+        });
+        return data.entry;
+    },
+    async blockArtist(artist: string): Promise<BlacklistEntry> {
+        const data = await apiCall('/blacklist.php', {
+            method: 'POST',
+            body: JSON.stringify({ block_type: 'artist', artist }),
+        });
+        return data.entry;
+    },
+    async remove(id: string): Promise<void> {
+        await apiCall(`/blacklist.php?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+    // Really skip the current track on the user's personal "Moj Radio" AutoDJ
+    // station (server calls MediaCP). Per-user; safe for personal stations only.
+    async skipMojRadio(streamUrl: string): Promise<{ ok: boolean }> {
+        return apiCall('/blacklist.php?action=skip', {
+            method: 'POST',
+            body: JSON.stringify({ stream_url: streamUrl }),
+        });
+    },
+};
+
 // Email API
 export const emails = {
     async send(to: string, subject: string, html: string) {
@@ -228,7 +326,7 @@ export const jingles = {
 
 // Remote Session API
 export const remote = {
-    async heartbeat(payload: { device_id: string; device_type: string; device_name: string; station_id: string | null; station_name: string | null; is_playing: boolean; song_title?: string | null; song_artist?: string | null; song_state?: string; song_queue?: string | null; saved_playlist_count?: number }) {
+    async heartbeat(payload: { device_id: string; device_type: string; device_name: string; station_id: string | null; station_name: string | null; is_playing: boolean; song_title?: string | null; song_artist?: string | null; song_artwork?: string | null; now_playing_title?: string | null; now_playing_cover?: string | null; now_playing_is_jingle?: boolean; song_state?: string; song_queue?: string | null; saved_playlist_count?: number; volume?: number }) {
         return apiCall('/remote.php?action=heartbeat', { method: 'POST', body: JSON.stringify(payload) });
     },
     async status(deviceId: string) {
@@ -289,14 +387,14 @@ export const nowplaying = {
         }
     },
 
-    async getInfo(streamUrl: string): Promise<{ title: string; coverart: string | null }> {
+    async getInfo(streamUrl: string): Promise<{ title: string; coverart: string | null; isJingle: boolean }> {
         try {
             const response = await fetch(`${API_URL}/nowplaying.php?url=${encodeURIComponent(streamUrl)}`);
-            if (!response.ok) return { title: '', coverart: null };
+            if (!response.ok) return { title: '', coverart: null, isJingle: false };
             const data = await response.json();
-            return { title: data.title || '', coverart: data.coverart || null };
+            return { title: data.title || '', coverart: data.coverart || null, isJingle: data.is_jingle === true };
         } catch {
-            return { title: '', coverart: null };
+            return { title: '', coverart: null, isJingle: false };
         }
     },
 };

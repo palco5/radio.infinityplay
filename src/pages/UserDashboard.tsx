@@ -30,11 +30,15 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import OnboardingModal from '../components/onboarding/OnboardingModal';
 import SettingsModal from '../components/dashboard/SettingsModal';
+import BlacklistModal from '../components/dashboard/BlacklistModal';
 import TrialStatus from '../components/dashboard/TrialStatus';
 import StationCard from '../components/StationCard';
 import MojRadioCard from '../components/MojRadioCard';
 import DashboardSelectionModal from '../components/dashboard/DashboardSelectionModal';
-import { Shield } from 'lucide-react';
+import MobileDashboardLanding from '../components/dashboard/MobileDashboardLanding';
+import MobileControlView from '../components/dashboard/MobileControlView';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { Shield, ChevronLeft, Ban } from 'lucide-react';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
@@ -43,13 +47,16 @@ export default function UserDashboard() {
 
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { currentStation, isPlaying, playStation, pause, updateJingles } = useAudio();
+  const isMobile = useIsMobile();
+  const [mobileView, setMobileView] = useState<'select' | 'radio' | 'control'>('select');
+  const { currentStation, isPlaying, playStation, pause, updateJingles, nowPlayingTitle, nowPlayingCover, nowPlayingIsJingle, volume, setVolume } = useAudio();
   const [stations, setStations] = useState<RadioStation[]>([]);
   const [filteredStations, setFilteredStations] = useState<RadioStation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showBlacklistModal, setShowBlacklistModal] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'account' | 'security' | 'billing' | 'notifications' | 'danger'>('account');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showDashboardSelector, setShowDashboardSelector] = useState(false);
@@ -108,11 +115,16 @@ export default function UserDashboard() {
     enabled: !adminViewUserId && !!user,
     currentStation,
     isPlaying,
+    nowPlayingTitle,
+    nowPlayingCover,
+    nowPlayingIsJingle,
     songState,
     currentSong,
     songQueue,
     postRadioQueue,
     savedPlaylistCount: savedPlaylist.length,
+    volume,
+    onSetVolume: setVolume,
     onPlayStation: (station) => {
       // Remote triggered immediate station switch — save playlist if song was active
       if (songState !== 'idle' && songState !== 'queued') {
@@ -440,6 +452,17 @@ export default function UserDashboard() {
     }
   };
 
+  // The phone gets a three-screen flow (select → radio / control). Tablet,
+  // desktop and admin-view keep the single dashboard exactly as before.
+  const useMobileFlow = isMobile && !adminViewUserId;
+
+  // Leaving phone-playback mode for the mode-select menu — silence everything
+  // on this phone so nothing keeps playing in the background.
+  const handleMobileBackToMenu = () => {
+    if (songState !== 'idle' && songState !== 'queued') stopSong();
+    pause();
+    setMobileView('select');
+  };
 
   return (
     <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors overflow-x-hidden">
@@ -463,30 +486,65 @@ export default function UserDashboard() {
           </button>
         </div>
       )}
+
+      {useMobileFlow && mobileView === 'select' && (
+        <MobileDashboardLanding
+          displayName={activeProfile?.venue_name || activeProfile?.display_name || user?.email?.split('@')[0]}
+          avatarUrl={activeProfile?.avatar_url}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onOpenSettings={() => { setSettingsInitialTab('account'); setShowSettingsModal(true); }}
+          onSignOut={handleSignOut}
+          onRadio={() => setMobileView('radio')}
+          onControl={() => setMobileView('control')}
+          isAdmin={user?.email === 'darkospira@gmail.com'}
+          onAdmin={() => setShowDashboardSelector(true)}
+        />
+      )}
+
+      {useMobileFlow && mobileView === 'control' && (
+        <MobileControlView
+          onBack={() => setMobileView('select')}
+          stations={remoteStations}
+          remoteSessions={remoteSessions}
+          sendRemoteCommand={sendRemoteCommand}
+        />
+      )}
+
+      {(!useMobileFlow || mobileView === 'radio') && (
+        <>
       <nav className="bg-white dark:bg-infinity-dark-800 border-b border-gray-200 dark:border-gray-700">
-        {/* Mobile header (phone only) — unchanged */}
+        {/* Mobile header (phone only) */}
         <div className="container mx-auto px-4 md:hidden">
           <div className="flex items-center justify-between h-16">
-            <button
-              onClick={() => { pause(); navigate('/'); }}
-              className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
-            >
-              <img src="logo.png" alt="InfinityPlay" className="h-8 w-auto" />
-              <span className="text-lg font-serif font-bold text-gray-900 dark:text-white">
-                Dashboard
-              </span>
-            </button>
+            {useMobileFlow ? (
+              <button
+                onClick={handleMobileBackToMenu}
+                className="flex items-center gap-1 pl-1 pr-3 py-2 -ml-1 rounded-full text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors active:scale-95"
+              >
+                <ChevronLeft size={20} />
+                <span className="text-sm font-semibold">Nazad</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => { pause(); navigate('/'); }}
+                className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
+              >
+                <img src="logo.png" alt="InfinityPlay" className="h-8 w-auto" />
+                <span className="text-lg font-serif font-bold text-gray-900 dark:text-white">
+                  Dashboard
+                </span>
+              </button>
+            )}
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={toggleTheme}
-                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-infinity-dark-700 transition-colors"
+                onClick={() => setShowBlacklistModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 active:scale-95 transition-all"
+                title="Blacklist"
               >
-                {theme === 'dark' ? (
-                  <Sun className="text-infinity-green-500" size={20} />
-                ) : (
-                  <Moon className="text-gray-700" size={20} />
-                )}
+                <Ban size={18} />
+                <span>Blacklist</span>
               </button>
 
               <button
@@ -538,6 +596,13 @@ export default function UserDashboard() {
                 className="text-base text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
               >
                 Podešavanja
+              </button>
+              <button
+                onClick={() => setShowBlacklistModal(true)}
+                className="group flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 border border-red-200/70 dark:border-red-800/40 shadow-sm hover:scale-105 active:scale-95 transition-all duration-200"
+              >
+                <Ban size={16} className="group-hover:rotate-12 transition-transform" />
+                Blacklist
               </button>
             </div>
 
@@ -605,8 +670,8 @@ export default function UserDashboard() {
             </div>
           )}
 
-          {/* 2. Daljinski upravljač */}
-          {!adminViewUserId && (
+          {/* 2. Daljinski upravljač — na telefonu je zamenjen "Kontroliši" ekranom */}
+          {!adminViewUserId && !useMobileFlow && (
             <div className="mb-4">
               <RemoteControlPanel
                 devices={remoteSessions}
@@ -798,11 +863,17 @@ export default function UserDashboard() {
           )}
         </Card>
       </div>
+        </>
+      )}
 
       <SettingsModal
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
         initialTab={settingsInitialTab}
+      />
+      <BlacklistModal
+        isOpen={showBlacklistModal}
+        onClose={() => setShowBlacklistModal(false)}
       />
       <OnboardingModal
         isOpen={showOnboarding}

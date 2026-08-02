@@ -13,7 +13,8 @@ interface AuthContextType {
   profile: UserProfile | null;
   session: any | null;
   loading: boolean;
-  signUp: (email: string, password: string, first_name: string, last_name: string, phone_number: string, country_code: string, venue_name: string) => Promise<void>;
+  signUp: (email: string, password: string, first_name: string, last_name: string, phone_number: string, country_code: string, venue_name: string) => Promise<any>;
+  verifyEmail: (email: string, code: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -88,23 +89,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, first_name: string, last_name: string, phone_number: string, country_code: string, venue_name: string) => {
-    try {
-      // Register returns { user, token }
-      const data = await auth.register(email, password, first_name, last_name, phone_number, country_code, venue_name);
+    // Register no longer logs the user in — it returns
+    // { requiresVerification: true, email }. The account is activated only
+    // after the email PIN is confirmed via verifyEmail().
+    return auth.register(email, password, first_name, last_name, phone_number, country_code, venue_name);
+  };
 
-      const newUser = data.user;
+  const verifyEmail = async (email: string, code: string) => {
+    // Confirms the registration PIN and logs the user in.
+    const data = await auth.verifyEmail(email, code);
+    const newUser = data.user;
 
-      setUser({
-        id: newUser.id,
-        email: newUser.email || '',
-        created_at: new Date().toISOString(),
-      });
+    setUser({
+      id: newUser.id,
+      email: newUser.email || '',
+      created_at: new Date().toISOString(),
+    });
 
-      setProfile(newUser as unknown as UserProfile);
-      setSession({ user: newUser });
-    } catch (error) {
-      throw error;
-    }
+    setProfile(newUser as unknown as UserProfile);
+    setSession({ user: newUser });
   };
 
   const signIn = async (email: string, password: string) => {
@@ -142,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         loading,
         signUp,
+        verifyEmail,
         signIn,
         signOut,
         refreshProfile,

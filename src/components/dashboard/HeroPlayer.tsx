@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Play, Pause, Volume2, VolumeX, SkipForward, Radio as RadioIcon, X } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, SkipForward, Radio as RadioIcon, X, Ban, Mic2 } from 'lucide-react';
 import { useAudio } from '../../contexts/AudioContext';
 import { useSongPlayer } from '../../contexts/SongPlayerContext';
 import NowPlayingIndicator from '../player/NowPlayingIndicator';
+import VolumeSlider from '../player/VolumeSlider';
 import PlaylistPanel from './PlaylistPanel';
 
 interface HeroPlayerProps {
@@ -24,16 +25,19 @@ interface Rect {
 }
 
 const PAUSE_GRACE_MS = 10000;
-const ANIM_MS = 700;
-const SWITCH_PAUSE_MS = 280; // breathing room between "landed back on old card" and "flying up from new one"
-const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)'; // smooth "expo-out" glide
-const EXPANDED_HEIGHT = 'h-[280px] md:h-[360px]';
+const ANIM_MS = 780;         // the box's up/down glide, camera tracking it centered
+const CAMERA_PAN_MS = 520;   // a pure camera move (scroll) to frame a target before/after a glide
+const SWITCH_PAUSE_MS = 320; // breathing room after the old station lands, before the camera moves on
+const FOCUS_HOLD_MS = 520;   // how long the camera holds centered on the just-clicked station before it climbs
+const LAND_SETTLE_MS = 200;  // soft-landing beat: lift-shadow relaxing into the resting shadow on touchdown
+const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)'; // smooth "expo-out" glide (used for the box-shadow relax)
+const EXPANDED_HEIGHT = 'h-[400px] md:h-[424px]';
 const EXPANDED_RADIUS = 24; // matches Tailwind's rounded-3xl, used for FLIP math
 const FLY_SHADOW = '0 30px 60px -12px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06)';
 const SETTLED_SHADOW = '0 20px 40px -16px rgba(0,0,0,0.4)';
 
 function heroHeight() {
-  return window.innerWidth < 768 ? 280 : 360;
+  return window.innerWidth < 768 ? 400 : 424;
 }
 
 function formatTime(seconds: number) {
@@ -43,17 +47,56 @@ function formatTime(seconds: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const easeOutExpo = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const maxScrollY = () => Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+
+// A rect in DOCUMENT space (top includes scroll), so it stays meaningful while
+// the page scrolls underneath. The fixed overlay's on-screen position is then
+// just `doc.top - scrollY`.
+type DocRect = Rect;
+function docRectOf(el: HTMLElement): DocRect {
+  const r = el.getBoundingClientRect();
+  return { top: r.top + window.scrollY, left: r.left, width: r.width, height: r.height };
+}
+// Scroll position that puts a document rect's vertical centre in the middle of
+// the viewport (clamped to the scrollable range).
+function centerScrollFor(doc: DocRect): number {
+  return clampNum(doc.top + doc.height / 2 - window.innerHeight / 2, 0, maxScrollY());
+}
+
 // Only exists in the DOM while something is playing (or was just paused, inside
-// the grace window). Grows from the clicked card up into the hero slot via a
-// FLIP-style rect animation (a `position: fixed` overlay, only during the
-// opening/closing transitions), then settles into an ordinary in-flow static
-// block so it scrolls with the page like everything else instead of tracking
-// the viewport. On pause + 10s grace it reverses: swaps back to the fixed
-// overlay, shrinks down to the origin card, and unmounts. Switching directly
-// from one station to another (while already expanded) plays both halves in
-// sequence — the old station flies back down, then the new one flies up.
+// the grace window). It rises from the clicked card into the hero slot as a
+// `position: fixed` overlay driven by a requestAnimationFrame tween that moves
+// the box AND the page scroll together — so the camera tracks the box and keeps
+// the action in the middle of the screen the whole way. Once expanded it settles
+// into an ordinary in-flow static block that scrolls with the page. Reverting
+// (pause + 10s, or a station switch) plays it backwards: the camera pans up to
+// the playing station, then it glides back down onto its own grid slot with the
+// camera following. A switch chains both halves — old station down, then the
+// camera frames the newly clicked one and it climbs up.
 export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOriginEl, onHiddenStationChange }: HeroPlayerProps) {
-  const { currentStation, isPlaying, pause, playStation, volume, setVolume, nowPlayingTitle, nowPlayingCover } = useAudio();
+  const { currentStation, isPlaying, pause, playStation, volume, setVolume, nowPlayingTitle, nowPlayingCover, nowPlayingPrevious, nowPlayingIsJingle, isNowBlocked, blockCurrentSong, blockCurrentArtist, skipRadioTrack } = useAudio();
+  const [radioSkipping, setRadioSkipping] = useState(false);
+  const handleSkipRadio = async () => {
+    setRadioSkipping(true);
+    const res = await skipRadioTrack();
+    setRadioSkipping(false);
+    flashBlockMsg(res && res.ok ? 'Preskočeno — nova pesma stiže' : 'Skip trenutno ne radi');
+  };
+  const [blockMsg, setBlockMsg] = useState<string | null>(null);
+  const blockMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flashBlockMsg = (msg: string) => {
+    setBlockMsg(msg);
+    if (blockMsgTimerRef.current) clearTimeout(blockMsgTimerRef.current);
+    blockMsgTimerRef.current = setTimeout(() => setBlockMsg(null), 2500);
+  };
+  useEffect(() => () => { if (blockMsgTimerRef.current) clearTimeout(blockMsgTimerRef.current); }, []);
+
+  const handleBlockSong = async () => { await blockCurrentSong(); flashBlockMsg('Pesma blokirana'); };
+  const handleBlockArtist = async () => { await blockCurrentArtist(); flashBlockMsg('Izvođač blokiran'); };
   const { songState, currentSong, pauseSong, resumeSong, skipSong, stopSong, songQueue, currentTime, duration, seekTo } = useSongPlayer();
 
   const isSongActiveNow = songState === 'playing' || songState === 'paused' || songState === 'loading';
@@ -63,7 +106,6 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
   const [phase, setPhase] = useState<Phase>('closed');
   const [rect, setRect] = useState<Rect | null>(null);
   const [radius, setRadius] = useState(16);
-  const [transitionMs, setTransitionMs] = useState(ANIM_MS);
   const [flying, setFlying] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const [forceClosed, setForceClosed] = useState(false);
@@ -72,7 +114,9 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
   const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevActiveRef = useRef(false);
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const rafRef = useRef<number | null>(null);
   const staticBoxRef = useRef<HTMLDivElement>(null);
+  const flyBoxRef = useRef<HTMLDivElement>(null);
   const displayedRef = useRef<Displayed>(null);
   const currentStationIdRef = useRef<string | null>(null);
   currentStationIdRef.current = currentStation?.id ?? null;
@@ -96,12 +140,97 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
     }
   }, [mode, isPlayingNow, songState]);
 
+  const cancelRaf = () => {
+    if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+  };
   const clearTimeouts = () => {
     timeoutsRef.current.forEach(clearTimeout);
     timeoutsRef.current = [];
+    cancelRaf();
   };
   const after = (ms: number, fn: () => void) => {
     timeoutsRef.current.push(setTimeout(fn, ms));
+  };
+
+  // --- rAF tweening: box position + page scroll driven together per frame ---
+
+  const tween = (duration: number, onFrame: (e: number) => void, onDone?: () => void) => {
+    cancelRaf();
+    const start = performance.now();
+    const step = (now: number) => {
+      const e = easeOutExpo(Math.min(1, (now - start) / duration));
+      onFrame(e);
+      if (e < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        rafRef.current = null;
+        onDone?.();
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+  };
+
+  // Commit one animation frame: move the page scroll and the box together, in
+  // lockstep. The box's on-screen rect is written straight to the DOM node (so
+  // it's perfectly in sync with the scroll this very frame, no React-commit
+  // lag), AND mirrored into state so any unrelated re-render mid-flight can't
+  // snap the box back to a stale position.
+  const applyFrame = (doc: DocRect, s: number, r: number) => {
+    window.scrollTo(0, s);
+    // The browser clamps scroll to the real scrollable range, which can differ
+    // from our requested `s` — e.g. once the hero slot collapses the page gets
+    // shorter, and on a big desktop screen the page is barely scrollable at all.
+    // Position the box against the ACTUAL post-clamp scroll so it stays glued to
+    // the card's true on-screen spot instead of drifting off onto another slot.
+    const actual = window.scrollY;
+    const vp: Rect = { top: doc.top - actual, left: doc.left, width: doc.width, height: doc.height };
+    const el = flyBoxRef.current;
+    if (el) {
+      el.style.top = `${vp.top}px`;
+      el.style.left = `${vp.left}px`;
+      el.style.width = `${vp.width}px`;
+      el.style.height = `${vp.height}px`;
+      el.style.borderRadius = `${r}px`;
+    }
+    setRect(vp);
+    setRadius(r);
+  };
+
+  // Pure camera move: the box stays glued to a fixed document spot while the
+  // page scroll eases from wherever it is to `targetScroll`. Used to pan up to
+  // the currently playing station before it descends.
+  const panWithBox = (doc: DocRect, targetScroll: number, duration: number, onDone: () => void) => {
+    const s0 = window.scrollY;
+    if (Math.abs(targetScroll - s0) < 2) { onDone(); return; }
+    tween(duration, (e) => applyFrame(doc, lerp(s0, targetScroll, e), EXPANDED_RADIUS), onDone);
+  };
+
+  // Pure camera move with no box on screen (used before a climb, while the grid
+  // card still sits in place): just eases the page scroll to frame `doc`.
+  const panScrollOnly = (doc: DocRect, duration: number, onDone: () => void) => {
+    const s0 = window.scrollY;
+    const s1 = centerScrollFor(doc);
+    if (Math.abs(s1 - s0) < 2) { onDone(); return; }
+    tween(duration, (e) => window.scrollTo(0, lerp(s0, s1, e)), onDone);
+  };
+
+  // The tracking glide: the box travels from `fromDoc` to `toDoc` in document
+  // space while the scroll follows to keep the box centred — so it stays in the
+  // middle of the screen the whole way instead of sliding off to an edge.
+  const trackGlide = (
+    fromDoc: DocRect, toDoc: DocRect,
+    fromRadius: number, toRadius: number,
+    duration: number, onDone: () => void,
+  ) => {
+    tween(duration, (e) => {
+      const d: DocRect = {
+        top: lerp(fromDoc.top, toDoc.top, e),
+        left: lerp(fromDoc.left, toDoc.left, e),
+        width: lerp(fromDoc.width, toDoc.width, e),
+        height: lerp(fromDoc.height, toDoc.height, e),
+      };
+      applyFrame(d, centerScrollFor(d), lerp(fromRadius, toRadius, e));
+    }, onDone);
   };
 
   const targetRect = (): Rect => {
@@ -116,83 +245,101 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
     };
   };
 
-  const openFromOrigin = (fromEl: HTMLElement | null) => {
-    clearTimeouts();
-    setTransitionMs(ANIM_MS);
-    const from = fromEl?.getBoundingClientRect();
-    const target = targetRect();
-
-    if (from) {
-      setRect({ top: from.top, left: from.left, width: from.width, height: from.height });
-      setRadius(20);
-    } else {
-      // No known origin — fade/scale in from roughly the target position.
-      setRect({ top: target.top + 24, left: target.left, width: target.width, height: target.height * 0.6 });
-      setRadius(24);
-    }
-    setFlying(false);
+  // The climb itself: spawn the box on the origin card (already framed by the
+  // camera) and glide it up into the hero slot, camera tracking it centred all
+  // the way. `fromDoc` is the card's document rect; `hideId` is the grid card to
+  // hide the instant the box takes its place, so it reads as the card lifting
+  // out of the grid rather than a duplicate appearing.
+  const runClimb = (fromDoc: DocRect, hideId: string | null) => {
+    const target = targetRect(); // hero slot, in document space
+    // Spawn the fixed box exactly over the (framed) card.
+    setRect({ top: fromDoc.top - window.scrollY, left: fromDoc.left, width: fromDoc.width, height: fromDoc.height });
+    setRadius(20);
+    if (hideId) setHiddenStationId(hideId); // lift the card out exactly as the box takes its spot
+    setFlying(true);
     setContentReady(false);
     setPhase('opening');
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    after(20, () => {
-      setRect(target);
-      setRadius(28);
-      setFlying(true);
+    trackGlide(fromDoc, target, 20, 28, ANIM_MS, () => {
+      setPhase('expanded');
+      setFlying(false);
+      setContentReady(true);
     });
-    after(ANIM_MS, () => { setPhase('expanded'); setFlying(false); });
-    after(ANIM_MS - 200, () => setContentReady(true));
+  };
+
+  const openFromOrigin = (
+    fromEl: HTMLElement | null,
+    opts?: { focusFirst?: boolean; hideId?: string | null },
+  ) => {
+    clearTimeouts();
+    const hideId = opts?.hideId ?? null;
+    if (!fromEl) {
+      // No known origin — climb up from just below the hero slot.
+      const target = targetRect();
+      runClimb({ top: target.top + 40, left: target.left, width: target.width, height: target.height * 0.7 }, hideId);
+      return;
+    }
+    // Beat: pan the camera so the just-clicked station sits centred, then climb.
+    // On a switch we hold a beat there so it's clear WHICH card is about to rise.
+    panScrollOnly(docRectOf(fromEl), CAMERA_PAN_MS, () => {
+      const start = () => runClimb(docRectOf(fromEl), hideId);
+      if (opts?.focusFirst) after(FOCUS_HOLD_MS, start); else start();
+    });
   };
 
   const closeToOrigin = (toEl: HTMLElement | null, onDone: () => void) => {
     clearTimeouts();
-    setTransitionMs(ANIM_MS);
     // The hero has been an ordinary in-flow block while expanded, so it may
-    // have scrolled anywhere — read its real on-screen position rather than
-    // recomputing the slot's original (pre-scroll) target rect.
+    // have scrolled anywhere — capture its real document position and hand off
+    // to the fixed overlay at exactly that spot (no visible jump).
     const liveRect = staticBoxRef.current?.getBoundingClientRect();
-    const from: Rect = liveRect
-      ? { top: liveRect.top, left: liveRect.left, width: liveRect.width, height: liveRect.height }
+    const heroDoc: DocRect = liveRect
+      ? { top: liveRect.top + window.scrollY, left: liveRect.left, width: liveRect.width, height: liveRect.height }
       : targetRect();
-    setRect(from);
+    setRect({ top: heroDoc.top - window.scrollY, left: heroDoc.left, width: heroDoc.width, height: heroDoc.height });
     setRadius(EXPANDED_RADIUS);
-    setFlying(false);
+    setFlying(true);
     setContentReady(false);
     setPhase('closing');
 
     if (toEl) {
-      const current = toEl.getBoundingClientRect();
-      // scrollIntoView({block:'center'}) will settle so the element's vertical
-      // center matches the viewport's vertical center — compute that final
-      // position analytically instead of re-measuring mid-scroll (which would
-      // race the smooth-scroll animation and read a stale rect).
-      const finalTop = window.innerHeight / 2 - current.height / 2;
-      toEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      after(20, () => {
-        setRect({ top: finalTop, left: current.left, width: current.width, height: current.height });
-        setRadius(20);
-        setFlying(true);
+      // Beat 1 — the camera pans UP to the currently playing station (the box
+      // stays glued to it) so we're looking right at it before it moves.
+      panWithBox(heroDoc, centerScrollFor(heroDoc), CAMERA_PAN_MS, () => {
+        // Beat 2 — measure the destination card and glide the box down onto it,
+        // the camera tracking it centred the whole way, so it lands exactly on
+        // its own (empty) slot in the middle of the screen.
+        //
+        // IMPORTANT: measure only AFTER the hero-slot collapse (phase→'closing')
+        // has actually committed and the grid has reflowed up. When the pan
+        // short-circuits synchronously — which it does whenever the hero is
+        // already centred, the usual case on the 10s pause return — measuring
+        // right here would read the card's PRE-collapse position (~a full card
+        // too low) and land the box on the neighbouring slot. One rAF lets React
+        // paint the collapse first so getBoundingClientRect() is truthful.
+        const startGlide = () => {
+          const cardDoc = docRectOf(toEl);
+          trackGlide(heroDoc, cardDoc, EXPANDED_RADIUS, 20, ANIM_MS, () => {
+            // Corrective snap: if the grid nudged during the glide, re-measure
+            // and settle dead-on the real slot before revealing the card.
+            const settled = docRectOf(toEl);
+            applyFrame(settled, centerScrollFor(settled), 20);
+            // Soft landing: let the lift-shadow relax into the resting shadow —
+            // a subtle "weight settling" beat — before handing off to the card.
+            setFlying(false);
+            after(LAND_SETTLE_MS, () => { setPhase('closed'); setRect(null); onDone(); });
+          });
+        };
+        requestAnimationFrame(() => requestAnimationFrame(startGlide));
       });
-      // The predicted finalTop assumes the scroll settles with the card
-      // perfectly centered, which isn't always true (e.g. near the top/
-      // bottom of the scrollable page) — a wrong prediction here used to
-      // mean the box could land on a neighboring card instead of the right
-      // one. Re-measure the card's REAL position once the scroll should be
-      // done and snap to it with one quick corrective adjustment, so it
-      // always lands exactly on its own card before revealing it.
-      after(ANIM_MS + 30, () => {
-        const settled = toEl.getBoundingClientRect();
-        setTransitionMs(180);
-        setRect({ top: settled.top, left: settled.left, width: settled.width, height: settled.height });
-      });
-      after(ANIM_MS + 30 + 180, () => { setPhase('closed'); setRect(null); setFlying(false); onDone(); });
     } else {
-      after(20, () => {
-        setRect({ top: from.top + 24, left: from.left, width: from.width, height: from.height * 0.6 });
-        setFlying(true);
-      });
-      after(ANIM_MS, () => { setPhase('closed'); setRect(null); setFlying(false); onDone(); });
+      // No known origin — just shrink/fade in place.
+      trackGlide(
+        heroDoc,
+        { top: heroDoc.top + 24, left: heroDoc.left, width: heroDoc.width, height: heroDoc.height * 0.6 },
+        EXPANDED_RADIUS, 20, ANIM_MS,
+        () => { setFlying(false); after(LAND_SETTLE_MS, () => { setPhase('closed'); setRect(null); onDone(); }); },
+      );
     }
   };
 
@@ -201,8 +348,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
     if (active && !prevActiveRef.current) {
       if (mode === 'radio' && currentStation) {
         displayedRef.current = { mode: 'radio', id: currentStation.id };
-        setHiddenStationId(currentStation.id);
-        openFromOrigin(getStationOriginEl(currentStation.id));
+        openFromOrigin(getStationOriginEl(currentStation.id), { hideId: currentStation.id });
       } else {
         displayedRef.current = { mode: 'song' };
         openFromOrigin(getDjOriginEl());
@@ -229,6 +375,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
       d?.mode === 'radio' && currentStation && d.id !== currentStation.id
     ) {
       const oldId = d.id;
+      // Beat 1 — the old station glides back down onto its own (empty) slot.
       closeToOrigin(getStationOriginEl(oldId), () => {
         // Reveal the old card the instant the box finishes landing on it —
         // it was hidden (opacity 0, same reserved slot) the whole time it was
@@ -237,9 +384,8 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
         // "this is the card, back in place" instead of landing on a
         // contextless blank spot in the grid.
         setHiddenStationId(null);
-        // Then let it sit visibly settled for a beat before the next one
-        // starts flying up — otherwise the two motions blur together and
-        // the "returned to its place" moment barely registers.
+        // Then let it sit visibly settled for a beat before the camera moves
+        // on — otherwise the "returned to its place" moment barely registers.
         after(SWITCH_PAUSE_MS, () => {
           // Re-read the current station rather than closing over the id from
           // when this effect fired — if the user clicked another station
@@ -248,8 +394,10 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
           const latestId = currentStationIdRef.current;
           if (!latestId) return;
           displayedRef.current = { mode: 'radio', id: latestId };
-          setHiddenStationId(latestId);
-          openFromOrigin(getStationOriginEl(latestId));
+          // Beat 2 (camera pans to the new card) + Beat 3 (it climbs up). The
+          // new card stays visible during the pan and is hidden only at the
+          // moment it lifts out — handled inside openFromOrigin/runClimb.
+          openFromOrigin(getStationOriginEl(latestId), { focusFirst: true, hideId: latestId });
         });
       });
     }
@@ -258,10 +406,12 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
 
   useEffect(() => () => clearTimeouts(), []);
 
+  const isJingle = mode === 'radio' && nowPlayingIsJingle;
   const cover = mode === 'song' ? currentSong?.artwork ?? null : nowPlayingCover;
   const title = mode === 'song' ? (currentSong?.title ?? '') : (nowPlayingTitle || currentStation?.genre || '');
-  const subtitle = mode === 'song' ? (currentSong?.artist ?? '') : (currentStation?.name ?? '');
+  const subtitle = mode === 'song' ? (currentSong?.artist ?? '') : (isJingle ? 'Džingl' : (currentStation?.name ?? ''));
   const showSkip = mode === 'song' && songQueue.length > 0;
+  const isMojRadio = mode === 'radio' && !!currentStation && currentStation.id.startsWith('moj-radio-');
   const isLoadingSong = mode === 'song' && songState === 'loading';
 
   const handleTogglePlay = () => {
@@ -288,6 +438,31 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
       )}
       <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/10 to-black/50" />
 
+      {/* Previously played track — a smaller, muted echo of the main card,
+          floated on the left so the current track stays perfectly centred.
+          Only on radio (a "previous song" is a live-stream concept). Scales
+          down on phones (narrow player) so it stays clear of the centre. */}
+      {mode === 'radio' && nowPlayingPrevious && (
+        <div
+          className="flex absolute left-2 md:left-5 lg:left-8 top-3 md:top-1/2 md:-translate-y-1/2 z-10 flex-col items-center gap-1.5 md:gap-2 w-[76px] md:w-36 lg:w-40 text-center pointer-events-none"
+          style={{ animation: 'hero-text-in 0.6s ease-out 0.2s both' }}
+        >
+          <span className="text-[9px] md:text-[10px] font-semibold uppercase tracking-[0.15em] md:tracking-[0.18em] text-white/40">
+            Prethodna
+          </span>
+          <div className="w-11 h-11 md:w-16 md:h-16 lg:w-20 lg:h-20 rounded-lg md:rounded-xl overflow-hidden shadow-lg bg-gradient-infinity flex items-center justify-center opacity-80">
+            {nowPlayingPrevious.cover ? (
+              <img src={nowPlayingPrevious.cover} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <RadioIcon className="text-white/70" size={22} />
+            )}
+          </div>
+          <p className="text-[10px] md:text-xs text-white/60 leading-snug line-clamp-2 break-words w-full">
+            {nowPlayingPrevious.title}
+          </p>
+        </div>
+      )}
+
       <div className="relative h-full flex flex-col items-center justify-center px-6 py-6 text-center">
         <div
           className="relative w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden shadow-xl bg-gradient-infinity flex items-center justify-center mb-4 flex-shrink-0"
@@ -295,6 +470,8 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
         >
           {cover ? (
             <img src={cover} alt={title} className="w-full h-full object-cover" />
+          ) : isJingle ? (
+            <Mic2 className="text-white" size={44} />
           ) : (
             <RadioIcon className="text-white" size={48} />
           )}
@@ -311,13 +488,13 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
         </div>
 
         <h2
-          className="text-white font-serif font-bold text-lg md:text-xl truncate w-full mb-1"
+          className="text-white font-serif font-bold text-lg md:text-xl w-full mb-1 break-words px-2 leading-snug"
           style={{ animation: 'hero-text-in 0.5s ease-out 0.16s both' }}
         >
           {title || 'Nema podataka'}
         </h2>
         <p
-          className={`text-sm md:text-base truncate w-full mb-5 ${isLoadingSong ? 'text-infinity-green-400 animate-pulse' : 'text-white/70'}`}
+          className={`text-sm md:text-base w-full mb-5 break-words px-2 leading-snug ${isLoadingSong ? 'text-infinity-green-400 animate-pulse' : 'text-white/70'}`}
           style={{ animation: 'hero-text-in 0.5s ease-out 0.24s both' }}
         >
           {isLoadingSong ? 'Učitava se...' : subtitle}
@@ -333,11 +510,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
           >
             {volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
-          <input
-            type="range" min="0" max="1" step="0.01" value={volume}
-            onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-20 md:w-28 h-1.5 bg-white/25 rounded-lg appearance-none cursor-pointer accent-infinity-green-500"
-          />
+          <VolumeSlider value={volume} onChange={setVolume} className="w-20 md:w-28" />
 
           <button
             onClick={handleTogglePlay}
@@ -357,10 +530,50 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
             <button onClick={skipSong} className="text-white/70 hover:text-white transition-colors" title="Preskoči pesmu">
               <SkipForward size={22} />
             </button>
+          ) : isMojRadio ? (
+            <button
+              onClick={handleSkipRadio}
+              disabled={radioSkipping}
+              className="text-white/70 hover:text-white transition-colors disabled:opacity-50"
+              title="Preskoči pesmu"
+            >
+              {radioSkipping ? (
+                <div className="w-[18px] h-[18px] border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <SkipForward size={22} />
+              )}
+            </button>
           ) : (
             <div className="w-[22px]" />
           )}
         </div>
+
+        {mode === 'radio' && nowPlayingTitle && (
+          <div className="mt-5 flex flex-col items-center gap-2.5" style={{ animation: 'hero-text-in 0.5s ease-out 0.4s both' }}>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={handleBlockSong}
+                title="Blokiraj ovu pesmu (samo za tebe)"
+                className="group flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-red-50 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 hover:border-red-400/60 shadow-lg shadow-red-900/20 backdrop-blur-sm hover:scale-[1.04] active:scale-95 transition-all duration-200"
+              >
+                <Ban size={17} className="group-hover:rotate-12 transition-transform" />
+                Blokiraj pesmu
+              </button>
+              <button
+                onClick={handleBlockArtist}
+                title="Blokiraj ovog izvođača (samo za tebe)"
+                className="group flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-red-50 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 hover:border-red-400/60 shadow-lg shadow-red-900/20 backdrop-blur-sm hover:scale-[1.04] active:scale-95 transition-all duration-200"
+              >
+                <Ban size={17} className="group-hover:rotate-12 transition-transform" />
+                Blokiraj izvođača
+              </button>
+            </div>
+            {blockMsg && <span className="text-xs text-infinity-green-400 font-semibold animate-pulse">{blockMsg}</span>}
+            {isNowBlocked && !blockMsg && (
+              <span className="text-xs text-amber-400/90 font-medium">Blokirano — čeka se sledeća pesma</span>
+            )}
+          </div>
+        )}
 
         {mode === 'song' && duration > 0 && (
           <div
@@ -403,9 +616,12 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
           <div
             ref={staticBoxRef}
             className={`relative w-full rounded-3xl overflow-hidden bg-gray-900 mb-6 md:mb-8 transition-[height] duration-300 ease-out ${
-              isPlaylistMode ? 'h-[560px] md:h-[420px]' : EXPANDED_HEIGHT
+              isPlaylistMode ? 'h-[560px] md:h-[424px]' : EXPANDED_HEIGHT
             }`}
-            style={{ boxShadow: SETTLED_SHADOW }}
+            // clip-path reliably clips the blurred cover background (whose blur
+            // halo spills past the edge) to the rounded corners on iOS/Safari —
+            // plain overflow-hidden + border-radius doesn't clip filtered layers.
+            style={{ boxShadow: SETTLED_SHADOW, clipPath: 'inset(0 round 24px)', transform: 'translateZ(0)' }}
           >
             {contentReady && (
               <div className="absolute inset-0 flex flex-col md:flex-row">
@@ -433,6 +649,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
 
       {isGeometryAnimating && createPortal(
         <div
+          ref={flyBoxRef}
           className="fixed z-40 overflow-hidden bg-gray-900"
           style={{
             top: rect?.top ?? 0,
@@ -441,7 +658,11 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
             height: rect?.height ?? 0,
             borderRadius: radius,
             boxShadow: flying ? FLY_SHADOW : SETTLED_SHADOW,
-            transition: `top ${transitionMs}ms ${EASE}, left ${transitionMs}ms ${EASE}, width ${transitionMs}ms ${EASE}, height ${transitionMs}ms ${EASE}, border-radius ${transitionMs}ms ${EASE}, box-shadow ${transitionMs}ms ${EASE}`,
+            // Geometry (top/left/width/height/radius) is driven frame-by-frame
+            // by the rAF tween, so it must NOT have a CSS transition fighting it.
+            // Only the shadow eases — that's the soft-landing "settle".
+            transition: `box-shadow ${LAND_SETTLE_MS}ms ${EASE}`,
+            willChange: 'top, left, width, height',
           }}
         >
           {/* Small preview shown only while flying between the card and the slot */}

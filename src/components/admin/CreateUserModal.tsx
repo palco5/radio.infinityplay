@@ -97,6 +97,8 @@ export default function CreateUserModal({ isOpen, onClose, onUserCreated }: Crea
                 is_admin: formData.isAdmin,
                 email_notifications: formData.emailNotifications,
                 newsletter_subscribed: formData.newsletterSubscription,
+                // Admin-created accounts are pre-verified (no email PIN step).
+                email_verified: 1,
             });
 
             // Resetuj formu

@@ -272,11 +272,14 @@ export interface DJManagerOverlayProps {
   remoteSessions: RemoteDevice[];
   sendRemoteCommand: (deviceId: string, command: string) => void;
   buttonRef: RefObject<HTMLButtonElement | null>;
+  /** When set, the overlay opens with this local pre-selected so every song
+   *  is sent straight to it (used from the mobile control view). */
+  initialLocationId?: string | null;
 }
 
 const EQ_TIMINGS = [0.55, 0.7, 0.5, 0.65, 0.6, 0.75, 0.5, 0.6, 0.55, 0.7, 0.5, 0.65];
 
-export default function DJManagerOverlay({ isOpen, onClose, remoteSessions, sendRemoteCommand, buttonRef }: DJManagerOverlayProps) {
+export default function DJManagerOverlay({ isOpen, onClose, remoteSessions, sendRemoteCommand, buttonRef, initialLocationId = null }: DJManagerOverlayProps) {
   const [visible, setVisible] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [contentVisible, setContentVisible] = useState(false);
@@ -321,6 +324,7 @@ export default function DJManagerOverlay({ isOpen, onClose, remoteSessions, send
     if (isOpen) {
       const rect = buttonRef.current?.getBoundingClientRect();
       setButtonRect(rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : null);
+      setSelectedLocationId(initialLocationId);
       setVisible(true);
       setExpanded(false);
       setContentVisible(false);
