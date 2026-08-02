@@ -469,8 +469,12 @@ function mcpResolveServiceId($identifier)
                 }
             }
         }
-        $lastPage = $data['last_page'] ?? $page;
-        if ($page >= (int) $lastPage) {
+        // A bare-array response has no last_page — keep paging until an empty
+        // page (the count()===0 break above); only a paginated envelope can
+        // tell us we're done early. Assuming last_page = current page made the
+        // search silently stop after page 1, so services beyond the first 15
+        // could never be resolved.
+        if (isset($data['last_page']) && $page >= (int) $data['last_page']) {
             break;
         }
     }
