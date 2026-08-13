@@ -11,6 +11,31 @@ interface JingleManagementProps {
 // Base preview volume — stays below 1.0 so boost has headroom to be heard
 const PREVIEW_BASE_VOLUME = 0.5;
 
+const MAX_JINGLES = 5;
+
+// Read an audio source's duration WITHOUT ever hanging the upload. Some MP3s
+// never fire `loadedmetadata` (and a broken source fires nothing at all), so a
+// naked `await new Promise(...)` there would freeze the whole batch forever —
+// that was the real "can't add more jingles" bug. Duration is only cosmetic,
+// so fall back to 0 on error or after a timeout.
+function readAudioDuration(src: string): Promise<number> {
+    return new Promise((resolve) => {
+        const audio = new Audio();
+        let settled = false;
+        const finish = (d: number) => {
+            if (settled) return;
+            settled = true;
+            audio.onloadedmetadata = null;
+            audio.onerror = null;
+            resolve(Number.isFinite(d) && d > 0 ? d : 0);
+        };
+        const timer = setTimeout(() => finish(0), 8000);
+        audio.onloadedmetadata = () => { clearTimeout(timer); finish(audio.duration); };
+        audio.onerror = () => { clearTimeout(timer); finish(0); };
+        audio.src = src;
+    });
+}
+
 export function JingleManagement({ userId, onJinglesUpdate }: JingleManagementProps) {
     const [jingles, setJingles] = useState<UserJingle[]>([]);
     const [loading, setLoading] = useState(true);
@@ -47,35 +72,42 @@ export function JingleManagement({ userId, onJinglesUpdate }: JingleManagementPr
         const files = e.target.files;
         if (!files || files.length === 0) return;
 
-        if (jingles.length + files.length > 5) {
-            setError('Maksimalan broj džinglova je 5');
+        setError('');
+
+        const remaining = MAX_JINGLES - jingles.length;
+        if (remaining <= 0) {
+            setError(`Maksimalan broj džinglova je ${MAX_JINGLES}`);
+            e.target.value = '';
             return;
         }
 
+        // Upload as many as fit instead of rejecting the whole selection.
+        const selected = Array.from(files);
+        const toUpload = selected.slice(0, remaining);
+        const skippedForLimit = selected.length - toUpload.length;
+
         setUploading(true);
-        setError('');
 
-        try {
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-
+        // Isolate each file: one failure (bad file, network) must not abort the
+        // rest, and the list is refreshed even on partial success.
+        const failed: string[] = [];
+        for (const file of toUpload) {
+            try {
                 if (file.size > 5 * 1024 * 1024) {
-                    setError(`Fajl "${file.name}" je prevelik. Maksimalna veličina je 5MB.`);
+                    failed.push(`${file.name} (prevelik, max 5MB)`);
                     continue;
                 }
 
                 const base64Data = await new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = () => resolve((reader.result as string).split(',')[1]);
-                    reader.onerror = reject;
+                    reader.onerror = () => reject(new Error('čitanje fajla nije uspelo'));
                     reader.readAsDataURL(file);
                 });
 
-                const duration = await new Promise<number>((resolve) => {
-                    const audio = new Audio();
-                    audio.onloadedmetadata = () => resolve(audio.duration);
-                    audio.src = URL.createObjectURL(file);
-                });
+                const objectUrl = URL.createObjectURL(file);
+                const duration = await readAudioDuration(objectUrl);
+                URL.revokeObjectURL(objectUrl);
 
                 await jinglesApi.create({
                     user_id: userId,
@@ -88,31 +120,33 @@ export function JingleManagement({ userId, onJinglesUpdate }: JingleManagementPr
                     interval_minutes: 15,
                     is_active: true,
                 });
+            } catch (err: any) {
+                failed.push(`${file.name} (${err?.message || 'greška'})`);
             }
-
-            await loadJingles();
-        } catch (err: any) {
-            setError('Greška pri upload-u: ' + (err.message || String(err)));
-        } finally {
-            setUploading(false);
-            e.target.value = '';
         }
+
+        await loadJingles();
+        setUploading(false);
+        e.target.value = '';
+
+        const notes: string[] = [];
+        if (skippedForLimit > 0) notes.push(`${skippedForLimit} fajl(ova) preskočeno — limit je ${MAX_JINGLES} džinglova`);
+        if (failed.length) notes.push(`Nije uspelo: ${failed.join(', ')}`);
+        setError(notes.join(' · '));
     };
 
     const handleUrlSubmit = async () => {
         if (!jingleUrl.trim()) { setError('Unesite URL džingla'); return; }
-        if (jingles.length >= 5) { setError('Maksimalan broj džinglova je 5'); return; }
+        if (jingles.length >= MAX_JINGLES) { setError(`Maksimalan broj džinglova je ${MAX_JINGLES}`); return; }
 
         setUploading(true);
         setError('');
 
         try {
-            const audio = new Audio(jingleUrl);
-            const duration = await new Promise<number>((resolve, reject) => {
-                audio.onloadedmetadata = () => resolve(audio.duration);
-                audio.onerror = () => reject(new Error('Nije moguće učitati audio sa ovog URL-a'));
-                audio.src = jingleUrl;
-            });
+            // Duration is cosmetic; don't block adding the jingle if the remote
+            // URL is slow or doesn't expose metadata — readAudioDuration falls
+            // back to 0 instead of hanging or rejecting.
+            const duration = await readAudioDuration(jingleUrl);
 
             await jinglesApi.create({
                 user_id: userId,
@@ -238,7 +272,7 @@ export function JingleManagement({ userId, onJinglesUpdate }: JingleManagementPr
             )}
 
             {/* Upload Area */}
-            {jingles.length < 5 && (
+            {jingles.length < MAX_JINGLES && (
                 <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-6 text-center hover:border-infinity-green-500 transition-colors">
                     <input
                         type="file"
@@ -259,7 +293,7 @@ export function JingleManagement({ userId, onJinglesUpdate }: JingleManagementPr
                             <div className="flex flex-col items-center">
                                 <Upload className="w-8 h-8 text-gray-400 mb-2" />
                                 <p className="font-medium text-gray-700 dark:text-gray-300">Kliknite za upload džinglova</p>
-                                <p className="text-xs text-gray-500 mt-1">MP3 format, do 5 fajlova (Preostalo: {5 - jingles.length})</p>
+                                <p className="text-xs text-gray-500 mt-1">MP3 format, do {MAX_JINGLES} fajlova (Preostalo: {MAX_JINGLES - jingles.length})</p>
                             </div>
                         )}
                     </label>
@@ -267,7 +301,7 @@ export function JingleManagement({ userId, onJinglesUpdate }: JingleManagementPr
             )}
 
             {/* URL Input */}
-            {jingles.length < 5 && (
+            {jingles.length < MAX_JINGLES && (
                 <div className="border-2 border-gray-300 dark:border-gray-700 rounded-xl p-6">
                     <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-4">Ili dodajte džingl putem URL-a</h4>
                     <div className="space-y-3">
