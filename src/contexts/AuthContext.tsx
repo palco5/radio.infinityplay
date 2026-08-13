@@ -41,6 +41,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Rethrows on failure so callers can tell a fresh profile from a failed
+  // fetch — the trial-expiry check must never lock the user out on stale data.
   const refreshProfile = async () => {
     if (user) {
       try {
@@ -48,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(profileData);
       } catch (error) {
         console.error('Failed to refresh profile:', error);
+        throw error;
       }
     }
   };

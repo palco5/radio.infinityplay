@@ -330,9 +330,14 @@ export default function AdminDashboard() {
   const handleExtendTrial = async () => {
     if (!extendTrialUser || !extendTrialDate) return;
     try {
+      // Keep subscription_ends_at in sync — leaving it at the old (expired)
+      // date is a trap: if the status later flips to 'active', the dashboard's
+      // expiry check would lock the account immediately.
+      const newEnd = new Date(extendTrialDate).toISOString();
       await profilesApi.update(extendTrialUser.id, {
         subscription_status: 'trial',
-        trial_ends_at: new Date(extendTrialDate).toISOString(),
+        trial_ends_at: newEnd,
+        subscription_ends_at: newEnd,
       });
       setShowExtendTrial(false);
       setExtendTrialUser(null);

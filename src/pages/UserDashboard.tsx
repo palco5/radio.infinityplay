@@ -45,7 +45,7 @@ export default function UserDashboard() {
   const [searchParams] = useSearchParams();
   const adminViewUserId = searchParams.get('adminView');
 
-  const { user, profile, loading: authLoading, signOut } = useAuth();
+  const { user, profile, loading: authLoading, signOut, refreshProfile } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const isMobile = useIsMobile();
   const [mobileView, setMobileView] = useState<'select' | 'radio' | 'control'>('select');
@@ -247,21 +247,50 @@ export default function UserDashboard() {
     }
   }, [profile, authLoading, navigate]);
 
-  // Expiration check — runs immediately and then every minute
+  // Expiration check — runs immediately and then every minute.
+  //
+  // The venue devices keep this app open for days, so the in-memory profile
+  // can be much older than the DB — an admin may have extended the trial in
+  // the meantime. Never lock the user out on stale data: first re-fetch the
+  // profile and only lock if FRESH data still says expired. If the refresh
+  // fails (offline), keep playing — the lockout can wait for a good fetch.
+  const expiryConfirmRef = useRef({ attemptedAt: 0, confirmed: false });
   useEffect(() => {
     if (!profile || profile.is_admin) return;
 
-    const checkExpiry = () => {
-      // Trial with expired date
+    // MySQL returns "YYYY-MM-DD HH:MM:SS", which Safari's Date() can't parse
+    // (Invalid Date → the check silently never fires there) — normalize to ISO.
+    const parseDbDate = (s: string) => new Date(s.includes('T') ? s : s.replace(' ', 'T'));
+    const isExpiredNow = () => {
       if (profile.subscription_status === 'trial' && profile.trial_ends_at) {
-        const diff = new Date(profile.trial_ends_at).getTime() - Date.now();
-        if (diff <= 0) { setIsTrialExpired(true); return; }
+        if (parseDbDate(profile.trial_ends_at).getTime() <= Date.now()) return true;
       }
-      // Subscription ended (active but past end date)
       if (profile.subscription_status === 'active' && profile.subscription_ends_at) {
-        const diff = new Date(profile.subscription_ends_at).getTime() - Date.now();
-        if (diff <= 0) { setIsTrialExpired(true); return; }
+        if (parseDbDate(profile.subscription_ends_at).getTime() <= Date.now()) return true;
       }
+      return false;
+    };
+
+    const checkExpiry = async () => {
+      if (!isExpiredNow()) {
+        expiryConfirmRef.current.confirmed = false;
+        setIsTrialExpired(false);
+        return;
+      }
+      // Looks expired, and a fresh fetch already confirmed it — lock.
+      if (expiryConfirmRef.current.confirmed) { setIsTrialExpired(true); return; }
+      // First re-fetch the profile: an admin may have extended the trial since
+      // this session loaded. A successful refresh replaces `profile` and
+      // re-runs this effect — extended → cleared above; still expired →
+      // confirmed → locked. A failed refresh (offline) never locks; retried
+      // on the next tick.
+      const now = Date.now();
+      if (now - expiryConfirmRef.current.attemptedAt < 55000) return;
+      expiryConfirmRef.current.attemptedAt = now;
+      try {
+        await refreshProfile();
+        expiryConfirmRef.current.confirmed = true;
+      } catch { /* offline — don't lock on stale data */ }
     };
 
     checkExpiry();
