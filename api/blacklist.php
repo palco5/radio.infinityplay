@@ -212,11 +212,24 @@ if ($method === 'POST' && ($_GET['action'] ?? '') === 'skip') {
     ]);
 }
 
-// GET — list this user's blacklist, newest first
+// GET — list a blacklist, newest first. Admin sme da vidi blacklist-u DRUGOG
+// korisnika preko ?user_id= (za pregled naloga u admin panelu); ostali samo svoju.
 if ($method === 'GET') {
+    $targetUserId = $currentUser['userId'];
+    $requested = $_GET['user_id'] ?? '';
+    if ($requested !== '' && $requested !== $currentUser['userId']) {
+        $chk = $db->prepare("SELECT is_admin, email FROM profiles WHERE id = ?");
+        $chk->execute([$currentUser['userId']]);
+        $me = $chk->fetch();
+        $isAdmin = ($me && $me['is_admin']) || in_array($me['email'] ?? '', ['darkospira@gmail.com', 'info@infinityplay.rs'], true);
+        if (!$isAdmin) {
+            sendJSON(['error' => 'Forbidden'], 403);
+        }
+        $targetUserId = $requested;
+    }
     $stmt = $db->prepare("SELECT id, block_type, artist, title, created_at
         FROM user_blacklist WHERE user_id = ? ORDER BY created_at DESC");
-    $stmt->execute([$currentUser['userId']]);
+    $stmt->execute([$targetUserId]);
     sendJSON(['blacklist' => $stmt->fetchAll()]);
 }
 

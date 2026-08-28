@@ -6,6 +6,22 @@
 
 import type { BlacklistEntry } from './api';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+/**
+ * Admin pregled: povuci blacklist-u određenog korisnika. Server dozvoljava samo
+ * adminu; koristi se u BlacklistModal-u kad admin gleda tuđi dashboard (?adminView).
+ */
+export async function fetchUserBlacklist(userId: string): Promise<BlacklistEntry[]> {
+  const token = localStorage.getItem('auth_token');
+  const res = await fetch(`${API_URL}/blacklist.php?user_id=${encodeURIComponent(userId)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error('Ne mogu da učitam blacklist-u korisnika.');
+  const data = await res.json();
+  return (data.blacklist ?? []) as BlacklistEntry[];
+}
+
 export interface ParsedTrack {
   artist: string; // normalized (lower-case, trimmed); '' if the title didn't split
   title: string;  // normalized; the whole string when there's no " - "

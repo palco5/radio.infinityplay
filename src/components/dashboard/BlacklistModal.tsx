@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { X, Ban, Music, User, RotateCcw, Search } from 'lucide-react';
 import { useAudio } from '../../contexts/AudioContext';
+import { fetchUserBlacklist } from '../../lib/blacklist';
 import type { BlacklistEntry } from '../../lib/api';
 
 interface BlacklistModalProps {
@@ -26,28 +28,41 @@ const entryLabel = (e: BlacklistEntry) =>
 
 export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps) {
   const { blacklist, unblock, refreshBlacklist } = useAudio();
+  const [searchParams] = useSearchParams();
+  const adminView = searchParams.get('adminView'); // id korisnika kog admin gleda
+  const [adminList, setAdminList] = useState<BlacklistEntry[]>([]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
+  // Izvor liste: u admin-pregledu = blacklist ciljanog korisnika (read-only),
+  // inače sopstvena iz AudioContext-a.
+  const list = adminView ? adminList : blacklist;
+
   // Refresh from the server + reset controls each time the panel opens.
   useEffect(() => {
-    if (isOpen) { refreshBlacklist(); setQuery(''); setFilter('all'); }
-  }, [isOpen, refreshBlacklist]);
+    if (!isOpen) return;
+    setQuery(''); setFilter('all');
+    if (adminView) {
+      fetchUserBlacklist(adminView).then(setAdminList).catch(() => setAdminList([]));
+    } else {
+      refreshBlacklist();
+    }
+  }, [isOpen, adminView, refreshBlacklist]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return blacklist.filter(e => {
+    return list.filter(e => {
       if (filter !== 'all' && e.block_type !== filter) return false;
       if (!q) return true;
       return entryLabel(e).toLowerCase().includes(q);
     });
-  }, [blacklist, query, filter]);
+  }, [list, query, filter]);
 
   if (!isOpen) return null;
 
   const counts = {
-    song: blacklist.filter(e => e.block_type === 'song').length,
-    artist: blacklist.filter(e => e.block_type === 'artist').length,
+    song: list.filter(e => e.block_type === 'song').length,
+    artist: list.filter(e => e.block_type === 'artist').length,
   };
 
   return createPortal(
@@ -71,7 +86,7 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
             <div>
               <h2 className="text-base font-bold text-gray-900 dark:text-white leading-tight">Blacklist</h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {blacklist.length === 0 ? 'ništa blokirano' : `${blacklist.length} blokirano`}
+                {list.length === 0 ? 'ništa blokirano' : `${list.length} blokirano`}
               </p>
             </div>
           </div>
@@ -107,7 +122,7 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
           <div className="flex gap-1.5">
             {FILTERS.map(f => {
               const active = filter === f.key;
-              const count = f.key === 'all' ? blacklist.length : counts[f.key];
+              const count = f.key === 'all' ? list.length : counts[f.key];
               return (
                 <button
                   key={f.key}
@@ -131,15 +146,15 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
             <div className="text-center py-12 text-gray-400 dark:text-gray-500">
               <Ban size={30} className="mx-auto mb-3 opacity-40" />
               <p className="text-sm">
-                {blacklist.length === 0 ? 'Blacklist je prazna.' : 'Nema rezultata za pretragu.'}
+                {list.length === 0 ? 'Blacklist je prazna.' : 'Nema rezultata za pretragu.'}
               </p>
-              {blacklist.length === 0 && (
+              {list.length === 0 && (
                 <p className="text-xs mt-1">Blokiraj pesmu ili izvođača iz plejera.</p>
               )}
             </div>
           ) : (
             filtered.map(e => (
-              <BlacklistRow key={e.id} entry={e} text={entryLabel(e)} onRestore={() => unblock(e.id)} />
+              <BlacklistRow key={e.id} entry={e} text={entryLabel(e)} onRestore={() => unblock(e.id)} readOnly={!!adminView} />
             ))
           )}
         </div>
@@ -149,7 +164,7 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
   );
 }
 
-function BlacklistRow({ entry, text, onRestore }: { entry: BlacklistEntry; text: string; onRestore: () => void }) {
+function BlacklistRow({ entry, text, onRestore, readOnly = false }: { entry: BlacklistEntry; text: string; onRestore: () => void; readOnly?: boolean }) {
   const isArtist = entry.block_type === 'artist';
   return (
     <div className="group flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-infinity-dark-700/60 transition-colors">
@@ -162,14 +177,16 @@ function BlacklistRow({ entry, text, onRestore }: { entry: BlacklistEntry; text:
         <p className="text-sm text-gray-800 dark:text-gray-100 truncate" title={text}>{text}</p>
         <p className="text-[11px] text-gray-400 dark:text-gray-500">{isArtist ? 'Izvođač' : 'Pesma'}</p>
       </div>
-      <button
-        onClick={onRestore}
-        title="Vrati (ukloni iz blacklist-e)"
-        className="flex items-center gap-1.5 flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-infinity-green-600 dark:text-infinity-green-400 bg-infinity-green-500/10 hover:bg-infinity-green-500/20 active:scale-95 transition-all"
-      >
-        <RotateCcw size={13} />
-        Vrati
-      </button>
+      {!readOnly && (
+        <button
+          onClick={onRestore}
+          title="Vrati (ukloni iz blacklist-e)"
+          className="flex items-center gap-1.5 flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-infinity-green-600 dark:text-infinity-green-400 bg-infinity-green-500/10 hover:bg-infinity-green-500/20 active:scale-95 transition-all"
+        >
+          <RotateCcw size={13} />
+          Vrati
+        </button>
+      )}
     </div>
   );
 }
