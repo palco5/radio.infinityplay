@@ -227,6 +227,8 @@ if ($method === 'GET') {
         }
         $targetUserId = $requested;
     }
+    // Auto-pomirenje: skini sa blacklist-e pesme koje su opet u MediaCP-u (vraćene).
+    try { blReconcileMojRadio($db, $targetUserId); } catch (\Throwable $e) { /* best-effort */ }
     $stmt = $db->prepare("SELECT id, block_type, artist, title, created_at
         FROM user_blacklist WHERE user_id = ? ORDER BY created_at DESC");
     $stmt->execute([$targetUserId]);
@@ -275,6 +277,15 @@ if ($method === 'POST') {
         VALUES (?, ?, ?, ?, ?)");
     $stmt->execute([$id, $currentUser['userId'], $blockType, $artist, $title]);
 
+    // Trajno ukloni iz korisnikovog Moj Radio (MediaCP). Best-effort: greška ne
+    // ruši blok (klijentsko utišavanje ostaje). Na localhostu (dry-run) samo loguje.
+    $media = ['applied' => false];
+    try {
+        $media = blApplyToMojRadio($db, $currentUser['userId'], $blockType, $artist, $title);
+    } catch (\Throwable $e) {
+        error_log('blacklist media apply failed: ' . $e->getMessage());
+    }
+
     sendJSON([
         'entry' => [
             'id' => $id,
@@ -282,6 +293,7 @@ if ($method === 'POST') {
             'artist' => $artist,
             'title' => $title,
         ],
+        'media' => $media,
     ], 201);
 }
 
@@ -297,4 +309,206 @@ if ($method === 'DELETE') {
 }
 
 sendJSON(['error' => 'Method not allowed'], 405);
+
+// ─── MediaCP: trajno uklanjanje blokiranog iz korisnikovog Moj Radio ──────────
+
+/**
+ * Jači normalizator za UPARIVANJE: mala slova, izbaci (zagrade)/[uglaste],
+ * česte ključne reči (official/video/audio/hd/feat…) i sve sem slova/cifara.
+ * Tako "Balenciaga (128kbit_AAC)" ~ "balenciaga".
+ */
+function blMatchNorm($s)
+{
+    $s = mb_strtolower((string) $s, 'UTF-8');
+    $s = preg_replace('/\([^)]*\)|\[[^\]]*\]/u', ' ', $s);
+    $s = preg_replace('/\b(official|video|audio|hd|lyrics?|spot|cover|remix|prod|ft|feat|featuring)\b/u', ' ', $s);
+    $s = preg_replace('/[^\p{L}\p{N}]+/u', '', (string) $s);
+    return (string) $s;
+}
+
+/** Rotacione mete: folderi + direktne pesme iz plejlisti u general_rotation. */
+function blRotationTargets($serviceId)
+{
+    $folders = [];
+    $tracks = [];
+    $pl = mediaCPRequest('GET', "/api/{$serviceId}/audio-playlist/list");
+    foreach (($pl['playlists']['data'] ?? []) as $p) {
+        if (empty($p['general_rotation']) || (isset($p['status']) && (int) $p['status'] !== 1)) {
+            continue;
+        }
+        $items = mediaCPRequest('GET', "/api/{$serviceId}/playlist-track/list/{$p['id']}?type=general");
+        foreach (($items['tracks'] ?? []) as $t) {
+            if (($t['type'] ?? '') === 'folder' && !empty($t['path'])) {
+                $folders[$t['path']] = true;
+            } elseif (!empty($t['track_id'])) {
+                $tracks[(int) $t['track_id']] = ['artist' => $t['artist'] ?? '', 'title' => $t['title'] ?? ''];
+            }
+        }
+    }
+    return ['folders' => array_keys($folders), 'tracks' => $tracks];
+}
+
+/** Nađi track_id-eve u Moj Radio rotaciji koji odgovaraju bloku (pesma/izvođač). */
+function blFindMatches($serviceId, $blockType, $artist, $title)
+{
+    $na = blMatchNorm($artist);
+    $nt = blMatchNorm($title);
+
+    $matchOne = fn ($tArtist, $tTitle) => blTrackMatches($blockType, $na, $nt, $tArtist, $tTitle);
+
+    $matches = [];
+    $targets = blRotationTargets($serviceId);
+    foreach ($targets['tracks'] as $tid => $meta) {
+        if ($matchOne($meta['artist'], $meta['title'])) {
+            $matches[$tid] = true;
+        }
+    }
+    foreach ($targets['folders'] as $folder) {
+        for ($page = 1; $page <= 40; $page++) {
+            $ml = mediaCPRequest('GET', "/api/{$serviceId}/media/list?path=" . rawurlencode($folder) . "&page={$page}");
+            $data = $ml['tracks']['data'] ?? [];
+            if (!$data) {
+                break;
+            }
+            foreach ($data as $t) {
+                if (!empty($t['id']) && $matchOne($t['artist'] ?? '', $t['title'] ?? '')) {
+                    $matches[(int) $t['id']] = true;
+                }
+            }
+            if ($page >= (int) ($ml['tracks']['last_page'] ?? 1)) {
+                break;
+            }
+        }
+    }
+    return array_keys($matches);
+}
+
+/** Obriši (ili dry-run) blokirano iz korisnikovog Moj Radio. Vraća rezime. */
+function blApplyToMojRadio($db, $userId, $blockType, $artist, $title)
+{
+    $stmt = $db->prepare('SELECT my_radio_stream_url FROM profiles WHERE id = ?');
+    $stmt->execute([$userId]);
+    $streamUrl = $stmt->fetchColumn();
+    if (!$streamUrl) {
+        return ['applied' => false, 'reason' => 'no_moj_radio'];
+    }
+    $identifier = mediaCPIdentifierFromUrl($streamUrl);
+    $serviceId = $identifier ? mediaCPServiceIdCached($identifier) : null;
+    if (!$serviceId) {
+        return ['applied' => false, 'reason' => 'service_not_found'];
+    }
+
+    $ids = blFindMatches($serviceId, $blockType, $artist, $title);
+    if (!$ids) {
+        return ['applied' => true, 'deleted' => 0, 'ids' => []];
+    }
+
+    $dryRun = defined('MEDIACP_DELETE_DRYRUN') && MEDIACP_DELETE_DRYRUN;
+    if ($dryRun) {
+        error_log("[blacklist DRYRUN] svc {$serviceId} bi obrisao " . count($ids) . " pesama: " . implode(',', $ids));
+        return ['applied' => true, 'dry_run' => true, 'deleted' => count($ids), 'ids' => $ids];
+    }
+
+    foreach (array_chunk($ids, 25) as $chunk) {
+        $qs = [];
+        foreach ($chunk as $i => $tid) {
+            $qs[] = 'tracks[' . $i . ']=' . (int) $tid;
+        }
+        mediaCPRequest('DELETE', "/api/{$serviceId}/media/delete?" . implode('&', $qs), $st);
+    }
+    return ['applied' => true, 'deleted' => count($ids), 'ids' => $ids];
+}
+
+/** Da li track (artist/title) odgovara bloku. $na/$nt su već blMatchNorm-ovani. */
+function blTrackMatches($blockType, $na, $nt, $trackArtist, $trackTitle)
+{
+    $a = blMatchNorm($trackArtist);
+    $ti = blMatchNorm($trackTitle);
+    if ($blockType === 'artist') {
+        return $a !== '' && $na !== '' && $a === $na;
+    }
+    if ($nt === '') {
+        return false;
+    }
+    $titleOk = ($ti === $nt) || strpos($ti, $nt) === 0 || strpos($nt, $ti) === 0;
+    // Izvođač labavije za pesmu: now-playing daje očišćeno ("Jala"), biblioteka
+    // pun sastav ("Jala & Buba Corelli") — dovoljno da se jedan sadrži u drugom.
+    $artistOk = ($na === '') || ($a !== '' && (strpos($a, $na) !== false || strpos($na, $a) !== false));
+    return $titleOk && $artistOk;
+}
+
+/**
+ * Auto-pomirenje: ako je neka BLOKIRANA pesma opet prisutna u korisnikovom Moj
+ * Radio (admin je vratio/re-upload-ovao), skloni je sa blacklist-e — tako se ne
+ * skipuje više. Radi SAMO kad je brisanje stvarno (ne dry-run), jer bi inače na
+ * localhostu (gde ništa nije obrisano) odmah poništila sve blokade. Throttle 5min.
+ */
+function blReconcileMojRadio($db, $userId)
+{
+    if (defined('MEDIACP_DELETE_DRYRUN') && MEDIACP_DELETE_DRYRUN) {
+        return;
+    }
+    $cf = sys_get_temp_dir() . '/ip_blrec_' . preg_replace('/[^a-zA-Z0-9]/', '_', (string) $userId) . '.json';
+    if (is_file($cf)) {
+        $c = json_decode((string) @file_get_contents($cf), true);
+        if (is_array($c) && (time() - (int) ($c['t'] ?? 0) < 300)) {
+            return;
+        }
+    }
+    @file_put_contents($cf, json_encode(['t' => time()]));
+
+    $q = $db->prepare('SELECT id, block_type, artist, title FROM user_blacklist WHERE user_id = ?');
+    $q->execute([$userId]);
+    $rows = $q->fetchAll();
+    if (!$rows) {
+        return;
+    }
+
+    $s = $db->prepare('SELECT my_radio_stream_url FROM profiles WHERE id = ?');
+    $s->execute([$userId]);
+    $streamUrl = $s->fetchColumn();
+    if (!$streamUrl) {
+        return;
+    }
+    $identifier = mediaCPIdentifierFromUrl($streamUrl);
+    $serviceId = $identifier ? mediaCPServiceIdCached($identifier) : null;
+    if (!$serviceId) {
+        return;
+    }
+
+    // Skupi sve pesme iz rotacije jednom.
+    $lib = [];
+    $targets = blRotationTargets($serviceId);
+    foreach ($targets['tracks'] as $meta) {
+        $lib[] = [$meta['artist'] ?? '', $meta['title'] ?? ''];
+    }
+    foreach ($targets['folders'] as $folder) {
+        for ($page = 1; $page <= 40; $page++) {
+            $ml = mediaCPRequest('GET', "/api/{$serviceId}/media/list?path=" . rawurlencode($folder) . "&page={$page}");
+            $data = $ml['tracks']['data'] ?? [];
+            if (!$data) {
+                break;
+            }
+            foreach ($data as $t) {
+                $lib[] = [$t['artist'] ?? '', $t['title'] ?? ''];
+            }
+            if ($page >= (int) ($ml['tracks']['last_page'] ?? 1)) {
+                break;
+            }
+        }
+    }
+
+    $del = $db->prepare('DELETE FROM user_blacklist WHERE id = ?');
+    foreach ($rows as $e) {
+        $na = blMatchNorm($e['artist']);
+        $nt = blMatchNorm($e['title']);
+        foreach ($lib as $lt) {
+            if (blTrackMatches($e['block_type'], $na, $nt, $lt[0], $lt[1])) {
+                $del->execute([$e['id']]);
+                error_log("[blacklist reconcile] svc {$serviceId}: vraćena pesma, skinuta blokada '{$e['artist']} - {$e['title']}'");
+                break;
+            }
+        }
+    }
+}
 ?>

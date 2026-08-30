@@ -171,7 +171,7 @@ export default function AuthForm({ defaultTab = 'login', onSuccess }: AuthFormPr
             setTimeout(() => {
                 if (onSuccess) onSuccess();
                 if (verifyContext === 'register') {
-                    navigate('/subscription-options');
+                    navigate('/dashboard'); // probni period je već aktivan pri registraciji
                 } else if (pendingEmail === 'darkospira@gmail.com') {
                     navigate('/admin');
                 } else {

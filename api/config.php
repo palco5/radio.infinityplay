@@ -1,33 +1,93 @@
 <?php
+// Local dev override (gitignored): kad postoji api/config.local.php, on prvi
+// definiše konstante (npr. lokalni DB), pa donji `if (!defined(...))` čuvaju te
+// vrednosti. U produkciji fajl ne postoji -> primenjuju se podrazumevane vrednosti
+// ispod i živi sajt je netaknut.
+if (is_file(__DIR__ . '/config.local.php')) {
+    require __DIR__ . '/config.local.php';
+}
+
 // Database configuration
-define('DB_HOST', 'mysql462.loopia.se');
-define('DB_NAME', 'infinityplay_rs_db_1');
-define('DB_USER', 'infinity@i77893');
-define('DB_PASS', 'racivaci10');
-define('DB_CHARSET', 'utf8mb4');
+if (!defined('DB_HOST'))    define('DB_HOST', 'mysql462.loopia.se');
+if (!defined('DB_NAME'))    define('DB_NAME', 'infinityplay_rs_db_1');
+if (!defined('DB_USER'))    define('DB_USER', 'infinity@i77893');
+if (!defined('DB_PASS'))    define('DB_PASS', 'racivaci10');
+if (!defined('DB_CHARSET')) define('DB_CHARSET', 'utf8mb4');
 
 // JWT Secret
-define('JWT_SECRET', '0c198658aed246fb823265e362d324fbc55236d14f35e240f689b1575c22a58bd02b765dab30d2fd505b1f1aaa719256');
+if (!defined('JWT_SECRET')) define('JWT_SECRET', '0c198658aed246fb823265e362d324fbc55236d14f35e240f689b1575c22a58bd02b765dab30d2fd505b1f1aaa719256');
 
 // CORS Settings
-define('CORS_ORIGIN', 'https://radio.infinityplay.rs');
+if (!defined('CORS_ORIGIN')) define('CORS_ORIGIN', 'https://radio.infinityplay.rs');
 
 // MediaCP API (Now Playing / cover art integration)
 define('MEDIACP_API_URL', 'https://media.infinityplay.rs/'); // e.g. https://cp.infinityplay.rs
 define('MEDIACP_API_KEY', 'hZ2GeXzUiMudWMRYsHyopFensXZpnFuKnZ-IVsmrV9CZ1nrLpXiEmw=='); // paste the key value here directly, not in chat
+// Kad je true, "blokiraj" NE briše stvarno iz MediaCP-a nego samo zabeleži u log
+// šta bi obrisao (za bezbedno testiranje na localhostu). Produkcija = false.
+if (!defined('MEDIACP_DELETE_DRYRUN')) define('MEDIACP_DELETE_DRYRUN', false);
 
-// Paddle (billing) — fill these in once your Paddle account is approved.
-// PADDLE_CLIENT_TOKEN is safe to expose publicly (it's the client-side token, like a Stripe publishable key).
-// PADDLE_API_KEY and PADDLE_WEBHOOK_SECRET are private — never expose them to the frontend.
-define('PADDLE_ENVIRONMENT', 'sandbox'); // 'sandbox' while testing, 'production' when live
-define('PADDLE_CLIENT_TOKEN', '');       // Paddle > Developer tools > Authentication > Client-side token
-define('PADDLE_API_KEY', '');            // Paddle > Developer tools > Authentication > API key (server-side only)
-define('PADDLE_WEBHOOK_SECRET', '');     // Paddle > Developer tools > Notifications > your webhook destination > secret key
+// ── Kartično plaćanje: Polar.sh (merchant of record) ─────────────────────────
+// Naziv provajdera na JEDNOM mestu — pravne stranice i checkout tekst ga čitaju
+// odavde, pa buduća promena ide u jednu liniju (ne po 5 fajlova).
+if (!defined('MOR_PROVIDER_NAME'))  define('MOR_PROVIDER_NAME', 'Polar');
+if (!defined('MOR_PROVIDER_LEGAL')) define('MOR_PROVIDER_LEGAL', 'Polar Software Inc.');
+if (!defined('MOR_PROVIDER_URL'))   define('MOR_PROVIDER_URL', 'https://polar.sh');
 
-// Map your internal plan names to the Price IDs you create in Paddle > Catalog > Prices
-define('PADDLE_PRICE_BASIC', '');   // Basic Radio plan price ID (pri_...)
-define('PADDLE_PRICE_BRANDED', ''); // Branded Radio plan price ID (pri_...)
-define('PADDLE_PRICE_HOST', '');    // Host Radio plan price ID (pri_...)
+// POLAR_ACCESS_TOKEN i POLAR_WEBHOOK_SECRET su privatni — nikad na frontend.
+// Produkcijske vrednosti (kartično plaćanje je uživo). Na localhostu ih
+// config.local.php pregazi po potrebi.
+if (!defined('POLAR_ENVIRONMENT'))    define('POLAR_ENVIRONMENT', 'production'); // 'sandbox' | 'production'
+if (!defined('POLAR_ACCESS_TOKEN'))   define('POLAR_ACCESS_TOKEN', 'polar_oat_DBwdKMHSujvu3c9FC9G5YqVefXS0Fc2Dok8VF4CN9gR');
+if (!defined('POLAR_WEBHOOK_SECRET')) define('POLAR_WEBHOOK_SECRET', 'whsec_8FOQERTB3eNPISBXmdCtG7gGUujMId2VkxgED2qGExN');
+
+// Product ID-evi iz Polar-a (Products). Mesečni:
+if (!defined('POLAR_PRODUCT_BASIC'))    define('POLAR_PRODUCT_BASIC', '256adf74-cd27-4e6c-949a-ba13fdb5dc32');
+if (!defined('POLAR_PRODUCT_BRANDED'))  define('POLAR_PRODUCT_BRANDED', '432eb9c4-7fff-45e6-9cc8-f4effe415a84');
+if (!defined('POLAR_PRODUCT_HOST'))     define('POLAR_PRODUCT_HOST', '');
+// Godišnji (zaseban product/price sa godišnjim billing period-om):
+if (!defined('POLAR_PRODUCT_BASIC_ANNUAL'))   define('POLAR_PRODUCT_BASIC_ANNUAL', '6560a378-340f-4add-8101-ab8b3bcabf1c');
+if (!defined('POLAR_PRODUCT_BRANDED_ANNUAL')) define('POLAR_PRODUCT_BRANDED_ANNUAL', '33cb1af0-2f99-41a3-912f-9f08e2b6d321');
+if (!defined('POLAR_PRODUCT_HOST_ANNUAL'))    define('POLAR_PRODUCT_HOST_ANNUAL', '49c63a67-80b2-4a66-be59-26c1767aea50');
+
+// ─────────────────────────────────────────────────────────────
+// Billing — plaćanje po fakturi (e-faktura na SEF)
+// Guarded define -> api/config.local.php može da ih pregazi za lokalni razvoj.
+// ─────────────────────────────────────────────────────────────
+// SEF (Sistem elektronskih faktura). Ključ se generiše na SEF portalu i važi
+// samo za okruženje na kom je generisan (demo ključ ne radi na produkciji).
+if (!defined('SEF_ENVIRONMENT')) define('SEF_ENVIRONMENT', 'demo'); // 'demo' | 'production'
+if (!defined('SEF_API_KEY'))     define('SEF_API_KEY', '');          // prazno = SEF isključen (samo mejl)
+
+// Podaci naše firme (idu na svaku fakturu). Popuni pre produkcije.
+if (!defined('COMPANY_NAZIV'))     define('COMPANY_NAZIV', 'Infinity Play');
+if (!defined('COMPANY_PIB'))       define('COMPANY_PIB', '');
+if (!defined('COMPANY_MB'))        define('COMPANY_MB', '');
+if (!defined('COMPANY_ADRESA'))    define('COMPANY_ADRESA', 'Ilije Bosilja 7/11');
+if (!defined('COMPANY_GRAD'))      define('COMPANY_GRAD', 'Novi Beograd');
+if (!defined('COMPANY_PTT'))       define('COMPANY_PTT', '11070');
+if (!defined('COMPANY_EMAIL'))     define('COMPANY_EMAIL', 'info@infinityplay.rs');
+if (!defined('COMPANY_TELEFON'))   define('COMPANY_TELEFON', '069602902');
+if (!defined('COMPANY_RACUN'))     define('COMPANY_RACUN', '');      // 18 cifara, bez crtica
+if (!defined('COMPANY_U_SISTEMU_PDV')) define('COMPANY_U_SISTEMU_PDV', true);
+
+// Naplata
+if (!defined('BILLING_ROK_PLACANJA_DANA')) define('BILLING_ROK_PLACANJA_DANA', 5);
+// Koliko dana pre isteka perioda se generiše faktura za obnovu.
+if (!defined('BILLING_RENEWAL_LEAD_DANI')) define('BILLING_RENEWAL_LEAD_DANI', 7);
+// Folder u koji banka/e-banking sprema camt.053 XML izvode za dnevni uvoz.
+// Cron ih obradi i premesti obrađene u podfolder 'done'. Prazno = uvoz isključen.
+if (!defined('BILLING_STATEMENTS_DIR')) define('BILLING_STATEMENTS_DIR', '');
+
+// Pretraga firme po PIB-u (auto-popuna na checkout formi). Besplatni javni izvori
+// (APR/NBS) blokiraju automatski pristup, pa je potreban komercijalni API.
+// Kad dobiješ nalog/ključ, popuni ovo pa auto-popuna proradi (vidi api/pib_lookup.php).
+if (!defined('PIB_LOOKUP_URL')) define('PIB_LOOKUP_URL', '');  // npr. https://provider.rs/api/company
+if (!defined('PIB_LOOKUP_KEY')) define('PIB_LOOKUP_KEY', '');  // API ključ provajdera
+// Kad je true, mejlovi se ne šalju stvarno (samo se loguju) — za lokalni razvoj.
+if (!defined('BILLING_EMAIL_DRYRUN')) define('BILLING_EMAIL_DRYRUN', false);
+// Token kojim Loopia URL-cron štiti worker/cron endpoint od javnog okidanja.
+if (!defined('BILLING_CRON_TOKEN')) define('BILLING_CRON_TOKEN', '');
 
 // Error reporting for debugging (disable in production)
 ini_set('display_errors', 0);
@@ -105,7 +165,7 @@ function generateJWT($userId, $email)
     $payload = json_encode([
         'userId' => $userId,
         'email' => $email,
-        'exp' => time() + (7 * 24 * 60 * 60) // 7 days
+        'exp' => time() + (365 * 24 * 60 * 60) // 1 godina — da se korisnici ne izloguju sami
     ]);
 
     $base64UrlHeader = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
@@ -188,7 +248,8 @@ define('SMTP_FROM_NAME', 'InfinityPlay Radio');
 
 // Minimal SMTP client with STARTTLS + AUTH LOGIN (no external libraries).
 // Returns true on success, false on any failure (details in error_log).
-function smtpSendMail($to, $subject, $html)
+// $attachments: [ ['filename'=>..., 'content'=>binary, 'mime'=>'application/pdf'], ... ]
+function smtpSendMail($to, $subject, $html, $attachments = [])
 {
     $host = SMTP_HOST;
     $port = SMTP_PORT;
@@ -256,17 +317,43 @@ function smtpSendMail($to, $subject, $html)
         $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
         $fromName = '=?UTF-8?B?' . base64_encode(SMTP_FROM_NAME) . '?=';
         $messageId = '<' . bin2hex(random_bytes(16)) . '@infinityplay.rs>';
-        $body = "From: {$fromName} <{$user}>\r\n"
+
+        $headers = "From: {$fromName} <{$user}>\r\n"
             . "To: <{$to}>\r\n"
             . "Subject: {$encodedSubject}\r\n"
             . "Date: " . date('r') . "\r\n"
             . "Message-ID: {$messageId}\r\n"
-            . "MIME-Version: 1.0\r\n"
-            . "Content-Type: text/html; charset=UTF-8\r\n"
-            . "Content-Transfer-Encoding: base64\r\n"
-            . "\r\n"
-            . chunk_split(base64_encode($html));
+            . "MIME-Version: 1.0\r\n";
 
+        if (!empty($attachments)) {
+            // multipart/mixed: HTML deo + jedan ili više priloga (npr. PDF faktura).
+            $boundary = 'b_' . bin2hex(random_bytes(12));
+            $body = $headers
+                . "Content-Type: multipart/mixed; boundary=\"{$boundary}\"\r\n\r\n"
+                . "--{$boundary}\r\n"
+                . "Content-Type: text/html; charset=UTF-8\r\n"
+                . "Content-Transfer-Encoding: base64\r\n\r\n"
+                . chunk_split(base64_encode($html)) . "\r\n";
+            foreach ($attachments as $att) {
+                $fname = preg_replace('/[^\w.\- ]+/u', '_', (string) ($att['filename'] ?? 'prilog'));
+                $mime = $att['mime'] ?? 'application/octet-stream';
+                $body .= "--{$boundary}\r\n"
+                    . "Content-Type: {$mime}; name=\"{$fname}\"\r\n"
+                    . "Content-Transfer-Encoding: base64\r\n"
+                    . "Content-Disposition: attachment; filename=\"{$fname}\"\r\n\r\n"
+                    . chunk_split(base64_encode((string) ($att['content'] ?? ''))) . "\r\n";
+            }
+            $body .= "--{$boundary}--";
+        } else {
+            $body = $headers
+                . "Content-Type: text/html; charset=UTF-8\r\n"
+                . "Content-Transfer-Encoding: base64\r\n"
+                . "\r\n"
+                . chunk_split(base64_encode($html));
+        }
+
+        // U SMTP DATA telu, red koji počinje tačkom mora biti "dot-stuffed".
+        $body = preg_replace('/^\./m', '..', $body);
         $send($body . "\r\n.");
         if (!$expect($read(), '250', 'message accept')) return false;
 
@@ -282,14 +369,15 @@ function smtpSendMail($to, $subject, $html)
 
 // Send an HTML email from the app. Prefers authenticated SMTP (reliable
 // delivery); falls back to PHP mail() when SMTP is not configured or fails.
-function sendAppMail($to, $subject, $html)
+function sendAppMail($to, $subject, $html, $attachments = [])
 {
     if (SMTP_PASS !== '') {
-        if (smtpSendMail($to, $subject, $html)) {
+        if (smtpSendMail($to, $subject, $html, $attachments)) {
             return true;
         }
         error_log("sendAppMail: SMTP failed for $to, falling back to mail()");
     }
+    // mail() fallback ne šalje priloge — degradira na samo HTML (bolje nego ništa).
 
     $headers = "MIME-Version: 1.0" . "\r\n";
     $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";

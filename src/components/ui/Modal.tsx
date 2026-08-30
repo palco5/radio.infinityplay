@@ -1,4 +1,5 @@
 import { ReactNode, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -7,9 +8,10 @@ interface ModalProps {
   title?: string;
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  hideClose?: boolean;
 }
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md', hideClose = false }: ModalProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -30,7 +32,10 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
     xl: 'max-w-4xl'
   };
 
-  return (
+  // Portal na <body> — da `fixed` pozicioniranje bude u odnosu na ceo ekran, a ne
+  // na roditelja sa transform/filter/backdrop-filter (npr. Navbar sa backdrop-blur),
+  // koji bi inače „zarobio" modal i isekao ga pri vrhu.
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -51,12 +56,14 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
           {title && (
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-infinity-dark-700">
               <h2 className="text-2xl font-serif text-gray-900 dark:text-white">{title}</h2>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-              >
-                <X size={24} />
-              </button>
+              {!hideClose && (
+                <button
+                  onClick={onClose}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              )}
             </div>
           )}
           <div className="p-6">
@@ -64,6 +71,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }

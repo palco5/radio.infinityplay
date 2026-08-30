@@ -503,8 +503,8 @@ export default function MobileControlView({ onBack, stations, remoteSessions, se
         )}
       </div>
 
-      {/* Block current (song / artist) — adds to your account blacklist */}
-      {selectedDevice && (
+      {/* Block current (song / artist) — samo na Moj Radio (ne na tematskim stanicama) */}
+      {selectedDevice && isMojRadioActive && (
         <div className="px-4 pt-1">
           <div className="grid grid-cols-2 gap-3.5">
             <button
@@ -524,6 +524,19 @@ export default function MobileControlView({ onBack, stations, remoteSessions, se
               Blokiraj izvođača
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Pusti džingl — Moj Radio i tematske stanice (pušta se na uređaju) */}
+      {selectedDevice && !songMode && !!activeStation && (
+        <div className="px-4 pt-2.5">
+          <button
+            onClick={() => { send('play_jingle'); flashBlock('Džingl pušten'); }}
+            className="w-full flex items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold text-gray-800 dark:text-white bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/15 hover:bg-gray-200 dark:hover:bg-white/20 active:scale-[0.98] transition-all shadow-sm"
+          >
+            <Mic2 size={17} className="flex-shrink-0" />
+            Pusti džingl
+          </button>
         </div>
       )}
 

@@ -73,16 +73,28 @@ export default function Navbar() {
               Početna
             </button>
             <button
-              onClick={() => scrollToSection('stations')}
+              onClick={() => scrollToSection('about')}
               className="text-gray-700 dark:text-gray-300 hover:text-infinity-green-600 transition-colors font-roboto"
             >
-              Naše Stanice
+              O platformi
+            </button>
+            <button
+              onClick={() => scrollToSection('how-it-works')}
+              className="text-gray-700 dark:text-gray-300 hover:text-infinity-green-600 transition-colors font-roboto"
+            >
+              Kako funkcioniše
             </button>
             <button
               onClick={() => scrollToSection('pricing')}
               className="text-gray-700 dark:text-gray-300 hover:text-infinity-green-600 transition-colors font-roboto"
             >
               Pretplate
+            </button>
+            <button
+              onClick={() => scrollToSection('faq')}
+              className="text-gray-700 dark:text-gray-300 hover:text-infinity-green-600 transition-colors font-roboto"
+            >
+              Česta pitanja
             </button>
             <button
               onClick={() => scrollToSection('contact')}
@@ -124,7 +136,7 @@ export default function Navbar() {
                 </Button>
               </div>
             ) : (
-              <Button variant="primary" size="sm" onClick={() => scrollToSection('subscription-options')}>
+              <Button variant="primary" size="sm" onClick={() => scrollToSection('pricing')}>
                 Započni Besplatno
               </Button>
             )}
@@ -151,16 +163,28 @@ export default function Navbar() {
               Početna
             </button>
             <button
-              onClick={() => scrollToSection('stations')}
+              onClick={() => scrollToSection('about')}
               className="block w-full text-left px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-infinity-green-50 dark:hover:bg-infinity-dark-800 rounded-lg"
             >
-              Naše Stanice
+              O platformi
+            </button>
+            <button
+              onClick={() => scrollToSection('how-it-works')}
+              className="block w-full text-left px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-infinity-green-50 dark:hover:bg-infinity-dark-800 rounded-lg"
+            >
+              Kako funkcioniše
             </button>
             <button
               onClick={() => scrollToSection('pricing')}
               className="block w-full text-left px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-infinity-green-50 dark:hover:bg-infinity-dark-800 rounded-lg"
             >
               Pretplate
+            </button>
+            <button
+              onClick={() => scrollToSection('faq')}
+              className="block w-full text-left px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-infinity-green-50 dark:hover:bg-infinity-dark-800 rounded-lg"
+            >
+              Česta pitanja
             </button>
             <button
               onClick={() => scrollToSection('contact')}
@@ -211,7 +235,7 @@ export default function Navbar() {
               </div>
             ) : (
               <div className="px-4">
-                <Button variant="primary" size="sm" fullWidth onClick={() => scrollToSection('subscription-options')}>
+                <Button variant="primary" size="sm" fullWidth onClick={() => scrollToSection('pricing')}>
                   Započni Besplatno
                 </Button>
               </div>

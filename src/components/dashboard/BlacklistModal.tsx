@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
-import { X, Ban, Music, User, RotateCcw, Search } from 'lucide-react';
+import { X, Ban, Music, User, Search } from 'lucide-react';
 import { useAudio } from '../../contexts/AudioContext';
 import { fetchUserBlacklist } from '../../lib/blacklist';
 import type { BlacklistEntry } from '../../lib/api';
@@ -27,7 +27,7 @@ const entryLabel = (e: BlacklistEntry) =>
       : (e.title ?? '');
 
 export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps) {
-  const { blacklist, unblock, refreshBlacklist } = useAudio();
+  const { blacklist, refreshBlacklist } = useAudio();
   const [searchParams] = useSearchParams();
   const adminView = searchParams.get('adminView'); // id korisnika kog admin gleda
   const [adminList, setAdminList] = useState<BlacklistEntry[]>([]);
@@ -154,7 +154,7 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
             </div>
           ) : (
             filtered.map(e => (
-              <BlacklistRow key={e.id} entry={e} text={entryLabel(e)} onRestore={() => unblock(e.id)} readOnly={!!adminView} />
+              <BlacklistRow key={e.id} entry={e} text={entryLabel(e)} />
             ))
           )}
         </div>
@@ -164,7 +164,7 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
   );
 }
 
-function BlacklistRow({ entry, text, onRestore, readOnly = false }: { entry: BlacklistEntry; text: string; onRestore: () => void; readOnly?: boolean }) {
+function BlacklistRow({ entry, text }: { entry: BlacklistEntry; text: string }) {
   const isArtist = entry.block_type === 'artist';
   return (
     <div className="group flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-infinity-dark-700/60 transition-colors">
@@ -177,16 +177,6 @@ function BlacklistRow({ entry, text, onRestore, readOnly = false }: { entry: Bla
         <p className="text-sm text-gray-800 dark:text-gray-100 truncate" title={text}>{text}</p>
         <p className="text-[11px] text-gray-400 dark:text-gray-500">{isArtist ? 'Izvođač' : 'Pesma'}</p>
       </div>
-      {!readOnly && (
-        <button
-          onClick={onRestore}
-          title="Vrati (ukloni iz blacklist-e)"
-          className="flex items-center gap-1.5 flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-infinity-green-600 dark:text-infinity-green-400 bg-infinity-green-500/10 hover:bg-infinity-green-500/20 active:scale-95 transition-all"
-        >
-          <RotateCcw size={13} />
-          Vrati
-        </button>
-      )}
     </div>
   );
 }

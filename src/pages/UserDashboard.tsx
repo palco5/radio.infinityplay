@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAudio } from '../contexts/AudioContext';
-import { stations as stationsApi, profiles as profilesApi, jingles as jinglesApi } from '../lib/api';
+import { stations as stationsApi, profiles as profilesApi, jingles as jinglesApi, polar as polarApi } from '../lib/api';
 import { useEventBus, EVENTS } from '../lib/eventBus';
 import { RadioStation, UserProfile } from '../types';
 import { useRemoteSession, RemoteDevice } from '../hooks/useRemoteSession';
@@ -38,6 +38,9 @@ import DashboardSelectionModal from '../components/dashboard/DashboardSelectionM
 import MobileDashboardLanding from '../components/dashboard/MobileDashboardLanding';
 import MobileControlView from '../components/dashboard/MobileControlView';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useBillingPortal } from '../hooks/useBillingPortal';
+import BillingBanner from '../components/billing/BillingBanner';
+import PastDueBlock from '../components/billing/PastDueBlock';
 import { Shield, ChevronLeft, Ban } from 'lucide-react';
 
 export default function UserDashboard() {
@@ -49,7 +52,7 @@ export default function UserDashboard() {
   const { theme, toggleTheme } = useTheme();
   const isMobile = useIsMobile();
   const [mobileView, setMobileView] = useState<'select' | 'radio' | 'control'>('select');
-  const { currentStation, isPlaying, playStation, pause, updateJingles, nowPlayingTitle, nowPlayingCover, nowPlayingIsJingle, volume, setVolume } = useAudio();
+  const { currentStation, isPlaying, playStation, pause, updateJingles, playCurrentJingle, nowPlayingTitle, nowPlayingCover, nowPlayingIsJingle, volume, setVolume } = useAudio();
   const [stations, setStations] = useState<RadioStation[]>([]);
   const [filteredStations, setFilteredStations] = useState<RadioStation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,6 +64,8 @@ export default function UserDashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showDashboardSelector, setShowDashboardSelector] = useState(false);
   const [isTrialExpired, setIsTrialExpired] = useState(false);
+  // Billing stanje (pretplata po fakturi / kartica): banner + past_due blokada.
+  const { portal: billingPortal } = useBillingPortal(!!profile && !profile.is_admin);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [adminViewProfile, setAdminViewProfile] = useState<UserProfile | null>(null);
   const [remoteSessions, setRemoteSessions] = useState<RemoteDevice[]>([]);
@@ -75,6 +80,23 @@ export default function UserDashboard() {
   const [hiddenStationId, setHiddenStationId] = useState<string | null>(null);
 
   const { songState, currentSong, stopSong, skipSong, setQueuedAction, pauseSong, resumeSong, playSong, queueSong, songQueue, postRadioQueue, savedPlaylist, saveCurrentQueueAs, clearSavedPlaylist, scheduleSwitch, resumeSavedPlaylist } = useSongPlayer();
+
+  // Po povratku sa Polar checkout-a povuci stanje ODMAH (webhook zna da kasni, a
+  // na localhostu uopšte ne stiže), pa osveži profil i očisti query iz URL-a —
+  // da korisnik ne ostane na "probni period" nakon uspešne uplate.
+  useEffect(() => {
+    if (searchParams.get('checkout') !== 'success') return;
+    const cid = searchParams.get('cid');
+    let alive = true;
+    (async () => {
+      try { if (cid) await polarApi.sync(cid); } catch { /* webhook će nadoknaditi */ }
+      if (!alive) return;
+      await refreshProfile();
+      navigate('/dashboard', { replace: true }); // skloni ?checkout=success&cid da se ne ponavlja
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Aktivan profil mora biti definisan pre remoteStations
   const activeProfile = adminViewUserId ? (adminViewProfile ?? null) : profile;
@@ -142,6 +164,7 @@ export default function UserDashboard() {
     onSongResume: resumeSong,
     onSongStop: stopSong,
     onSongSkip: skipSong,
+    onPlayJingle: () => { void playCurrentJingle(); },
     onSongPlay: (song, immediate) => { if (immediate) playSong(song); else queueSong(song); },
     onScheduleSwitch: (keepInQueue, station) => scheduleSwitch(keepInQueue, () => playStation(station)),
     onResumeSaved: (immediate) => resumeSavedPlaylist(immediate),
@@ -242,7 +265,7 @@ export default function UserDashboard() {
       // Only redirect if status is neither trial nor active (e.g. cancelled, unpaid)
       if (!isTrial && !isActive) {
         setIsRedirecting(true);
-        navigate('/subscription-options', { replace: true });
+        navigate('/pretplata', { replace: true });
       }
     }
   }, [profile, authLoading, navigate]);
@@ -332,6 +355,12 @@ export default function UserDashboard() {
     );
   }
 
+  // past_due (faktura neplaćena posle grace-a): blokiraj stream, prikaži podatke
+  // za uplatu + IPS QR. hasAccess() na serveru je izvor istine; ovde ga poštujemo.
+  if (billingPortal && !billingPortal.has_access && billingPortal.subscription?.state === 'past_due') {
+    return <PastDueBlock portal={billingPortal} />;
+  }
+
   if (isTrialExpired) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-infinity-dark-900 p-4">
@@ -377,8 +406,8 @@ export default function UserDashboard() {
 
             {/* Actions */}
             <div className="flex flex-col gap-3">
-              <Button fullWidth onClick={() => navigate('/subscription-options')} size="lg" className="font-bold">
-                Pogledaj Pakete
+              <Button fullWidth onClick={() => navigate('/pretplata')} size="lg" className="font-bold">
+                Plati online
               </Button>
               <a
                 href="mailto:support@infinityplay.rs"
@@ -495,6 +524,9 @@ export default function UserDashboard() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-infinity-dark-900 transition-colors overflow-x-hidden">
+      {/* Pending faktura: nenametljiv banner sa odbrojavanjem + podaci za uplatu */}
+      <BillingBanner portal={billingPortal} />
+
       {/* Admin pregled banner */}
       {adminViewUserId && (
         <div className="bg-amber-400 text-amber-900 px-4 py-2 flex items-center justify-center gap-3 text-sm font-medium">

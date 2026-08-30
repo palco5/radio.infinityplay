@@ -6,11 +6,11 @@ setCORSHeaders();
 $method = $_SERVER['REQUEST_METHOD'];
 $path = isset($_GET['path']) ? $_GET['path'] : '';
 
-// Self-heal: add Paddle billing columns if this DB predates them
+// Self-heal: add billing provider columns if this DB predates them
 try {
     $db = getDB();
-    $db->exec("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS paddle_customer_id VARCHAR(64)");
-    $db->exec("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS paddle_subscription_id VARCHAR(64)");
+    $db->exec("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS provider_customer_id VARCHAR(64)");
+    $db->exec("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS provider_subscription_id VARCHAR(64)");
     // Email verification (blocking) — 0 = not verified, 1 = verified.
     // Add the column only if missing, and backfill existing accounts to
     // verified (they predate verification and must not get locked out).
@@ -53,9 +53,12 @@ if ($method === 'POST' && $path === 'register') {
     $username = explode('@', $email)[0];
 
     try {
+        // Probni period se dodeljuje ODMAH pri registraciji (bez klika na dugme).
+        // trial_started_at je pečat koji sprečava da isti nalog dobije trial dvaput
+        // (osim ako ga admin ručno ne produži/ponovo dodeli).
         $stmt = $db->prepare("
-            INSERT INTO profiles (id, email, password, username, display_name, first_name, last_name, phone_number, country_code, venue_name, subscription_status, subscription_tier, email_verified)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inactive', 'none', 0)
+            INSERT INTO profiles (id, email, password, username, display_name, first_name, last_name, phone_number, country_code, venue_name, subscription_status, subscription_tier, trial_started_at, trial_ends_at, subscription_ends_at, email_verified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'trial', 'basic-radio', NOW(), NOW() + INTERVAL 7 DAY, NOW() + INTERVAL 7 DAY, 0)
         ");
 
         $stmt->execute([

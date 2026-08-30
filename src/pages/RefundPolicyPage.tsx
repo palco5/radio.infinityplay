@@ -1,4 +1,5 @@
 import { RotateCcw } from 'lucide-react';
+import { MERCHANT_OF_RECORD } from '../lib/plans';
 
 export default function RefundPolicyPage() {
   return (
@@ -55,10 +56,10 @@ export default function RefundPolicyPage() {
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">5. Obrada plaćanja</h2>
             <p>
               Sva plaćanja na InfinityPlay Radio obrađuje{' '}
-              <a href="https://www.paddle.com" target="_blank" rel="noopener noreferrer" className="text-infinity-green-500 hover:underline">
-                Paddle.com
+              <a href={MERCHANT_OF_RECORD.url} target="_blank" rel="noopener noreferrer" className="text-infinity-green-500 hover:underline">
+                {MERCHANT_OF_RECORD.name}
               </a>
-              , naš ovlašćeni prodavac (Merchant of Record). Paddle se pojavljuje na vašem bankovnom izvodu kao prodavac
+              , naš ovlašćeni prodavac (Merchant of Record). {MERCHANT_OF_RECORD.name} se pojavljuje na vašem bankovnom izvodu kao prodavac
               i odgovoran je za obradu povraćaja u naše ime.
             </p>
           </section>

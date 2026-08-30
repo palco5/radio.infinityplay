@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { profiles as profilesApi, auth as authApi, paddle as paddleApi } from '../../lib/api';
-import { openPaddleCheckout } from '../../lib/paddle';
+import { profiles as profilesApi, auth as authApi, billing as billingApi, polar as polarApi, type BillingPortalState } from '../../lib/api';
+import { MERCHANT_OF_RECORD } from '../../lib/plans';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -40,9 +41,18 @@ const TIER_PRICES: Record<string, string> = {
   'host-radio': '195€ / godišnje',
 };
 
+const INVOICE_STATUS: Record<string, { label: string; cls: string }> = {
+  paid:       { label: 'Plaćeno',   cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  sent:       { label: 'Poslato',   cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  sef_failed: { label: 'Poslato',   cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  draft:      { label: 'U pripremi', cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
+  canceled:   { label: 'Otkazano',  cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
+};
+
 export default function SettingsModal({ isOpen, onClose, initialTab = 'account' }: SettingsModalProps) {
   const { user, profile, refreshProfile, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
 
   useEffect(() => {
@@ -269,40 +279,91 @@ export default function SettingsModal({ isOpen, onClose, initialTab = 'account' 
 
   // ── Pretplata i naplata ───────────────────────────────────────────────
   function BillingTab({ onManageInAccountTab: _unused }: { onManageInAccountTab: () => void }) {
-    const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
     const [canceling, setCanceling] = useState(false);
+    const [reactivating, setReactivating] = useState(false);
+    const [portalLoading, setPortalLoading] = useState(false);
     const [success, setSuccess] = useState('');
     const [error, setError] = useState('');
+    const [portal, setPortal] = useState<BillingPortalState | null>(null);
+
+    // Učitaj billing stanje (tip pretplate, sledeći datum, istorija faktura).
+    useEffect(() => {
+      let alive = true;
+      billingApi.getPortal().then((p) => { if (alive) setPortal(p); }).catch(() => {});
+      return () => { alive = false; };
+    }, []);
 
     const tier = profile?.subscription_tier || 'none';
     const status = profile?.subscription_status || 'inactive';
     const hasActivePlan = status !== 'inactive' && tier !== 'none' && tier !== 'free';
+    const subState = portal?.subscription?.state;
+    const isFaktura = portal?.subscription?.payment_method === 'faktura';
+    const isCard = portal?.subscription?.payment_method === 'card';
+    const isCanceling = subState === 'canceling' || !!profile?.cancel_at_period_end;
 
-    const handleUpgrade = async (planKey: 'basic' | 'branded' | 'host') => {
-      if (!user) return;
+    // Otvara Polar Customer Portal (izmena/brisanje kartice, način plaćanja,
+    // fakture) — sve na Polarovoj PCI-bezbednoj strani, kao Claude→Stripe.
+    const handleManagePayment = async () => {
       setError('');
-      setLoadingPlan(planKey);
+      setPortalLoading(true);
       try {
-        await openPaddleCheckout(planKey, user.id, user.email);
+        const { url } = await polarApi.portal();
+        window.location.href = url; // vraća se na /dashboard preko return_url
       } catch (err: any) {
-        setError(err.message || 'Plaćanje trenutno nije dostupno');
-      } finally {
-        setLoadingPlan(null);
+        setError(err?.message || 'Ne mogu da otvorim upravljanje plaćanjem.');
+        setPortalLoading(false);
       }
     };
 
+    // Nov korisnik (bez aktivne kartične pretplate): izbor paketa ide kroz
+    // /pretplata -> /checkout. Aktivan kartični pretplatnik NE sme kroz novi
+    // checkout (Polar blokira "already have subscription") — promena plana ide
+    // kroz Polar portal (proration), kao Claude→Stripe.
+    const handleUpgrade = (planKey: 'basic' | 'branded' | 'host') => {
+      if (isCard) { handleManagePayment(); return; }
+      const planId = { basic: 'basic-radio', branded: 'branded-radio', host: 'host-radio' }[planKey];
+      onClose();
+      navigate(`/pretplata?plan=${planId}`);
+    };
+
+    // Otkazivanje radi za OBA načina (faktura + kartica) kroz isti endpoint.
     const handleCancel = async () => {
       setError('');
       setSuccess('');
       setCanceling(true);
       try {
-        await paddleApi.cancelSubscription();
+        const r = await billingApi.cancel();
+        const until = r.access_until
+          ? new Date(r.access_until.replace(' ', 'T')).toLocaleDateString('sr-RS', { day: 'numeric', month: 'long', year: 'numeric' })
+          : null;
+        setSuccess(until ? `Pretplata je otkazana. Pristup imate do ${until}.` : (r.message || 'Pretplata je otkazana.'));
         await refreshProfile();
-        setSuccess('Pretplata je otkazana — pristup traje do kraja tekućeg perioda.');
+        billingApi.getPortal().then(setPortal).catch(() => {});
       } catch (err: any) {
         setError(err.message || 'Greška pri otkazivanju pretplate');
       } finally {
         setCanceling(false);
+      }
+    };
+
+    // Reaktivacija u toku perioda; ako je period istekao, vodi na checkout.
+    const handleReactivate = async () => {
+      setError('');
+      setSuccess('');
+      setReactivating(true);
+      try {
+        await billingApi.reactivate();
+        setSuccess('Pretplata je ponovo aktivna.');
+        await refreshProfile();
+        billingApi.getPortal().then(setPortal).catch(() => {});
+      } catch (err: any) {
+        if (err?.data?.needs_checkout) {
+          window.location.href = `/checkout?plan=${portal?.subscription?.plan || 'branded-radio'}`;
+          return;
+        }
+        setError(err.message || 'Reaktivacija trenutno nije moguća');
+      } finally {
+        setReactivating(false);
       }
     };
 
@@ -359,10 +420,44 @@ export default function SettingsModal({ isOpen, onClose, initialTab = 'account' 
               </div>
             )}
 
-            {!profile?.cancel_at_period_end && status !== 'trial' && (
-              <Button variant="outline" size="md" onClick={handleCancel} disabled={canceling}>
-                {canceling ? 'Otkazivanje...' : 'Otkaži pretplatu'}
-              </Button>
+            {/* Tip pretplate */}
+            {portal?.subscription && (
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-gray-400 to-gray-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <CreditCard className="text-white" size={18} />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Način plaćanja</p>
+                  <p className="font-bold text-gray-900 dark:text-white">
+                    {isFaktura ? 'Plaćanje po fakturi' : 'Kartica'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              {isCard && (
+                <Button variant="primary" size="md" onClick={handleManagePayment} disabled={portalLoading}>
+                  {portalLoading ? 'Otvaranje…' : 'Upravljaj karticom i plaćanjem'}
+                </Button>
+              )}
+              {isCanceling ? (
+                <Button variant={isCard ? 'outline' : 'primary'} size="md" onClick={handleReactivate} disabled={reactivating}>
+                  {reactivating ? 'Reaktivacija...' : 'Ponovo aktiviraj'}
+                </Button>
+              ) : (
+                status !== 'trial' && (
+                  <Button variant="outline" size="md" onClick={handleCancel} disabled={canceling}>
+                    {canceling ? 'Otkazivanje...' : 'Otkaži pretplatu'}
+                  </Button>
+                )
+              )}
+            </div>
+
+            {isCard && (
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Promena plana, izmena kartice, način plaćanja i fakture — bezbedno na {MERCHANT_OF_RECORD.name} portalu.
+              </p>
             )}
           </div>
         ) : (
@@ -372,35 +467,74 @@ export default function SettingsModal({ isOpen, onClose, initialTab = 'account' 
           </div>
         )}
 
-        <div>
-          <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wide">
-            {hasActivePlan ? 'Promeni plan' : 'Dostupni planovi'}
-          </h4>
-          <div className="grid sm:grid-cols-3 gap-3">
-            {(['basic', 'branded', 'host'] as const).map((planKey) => {
-              const label = { basic: 'Basic Radio', branded: 'Branded Radio', host: 'Host Radio' }[planKey];
-              const price = { basic: '15€/mes', branded: '35€/mes', host: '195€/god' }[planKey];
-              return (
-                <button
-                  key={planKey}
-                  onClick={() => handleUpgrade(planKey)}
-                  disabled={loadingPlan !== null}
-                  className="text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-infinity-green-500 transition-colors disabled:opacity-50"
-                >
-                  <p className="font-bold text-gray-900 dark:text-white">{label}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{price}</p>
-                  <p className="text-xs text-infinity-green-600 mt-2">
-                    {loadingPlan === planKey ? 'Otvaranje...' : 'Izaberi →'}
-                  </p>
-                </button>
-              );
-            })}
+        {/* Kartični pretplatnik menja plan kroz Polar portal (dugme iznad), a ne
+            kroz novi checkout — pa ove kartice prikazujemo samo onima koji tek
+            biraju plan (trial/istekli/faktura). */}
+        {!isCard && (
+          <div>
+            <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wide">
+              {hasActivePlan ? 'Promeni plan' : 'Dostupni planovi'}
+            </h4>
+            <div className="grid sm:grid-cols-3 gap-3">
+              {(['basic', 'branded', 'host'] as const).map((planKey) => {
+                const label = { basic: 'Basic Radio', branded: 'Branded Radio', host: 'Host Radio' }[planKey];
+                const price = { basic: '15€/mes', branded: '35€/mes', host: '195€/god' }[planKey];
+                return (
+                  <button
+                    key={planKey}
+                    onClick={() => handleUpgrade(planKey)}
+                    className="text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-infinity-green-500 transition-colors"
+                  >
+                    <p className="font-bold text-gray-900 dark:text-white">{label}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{price}</p>
+                    <p className="text-xs text-infinity-green-600 mt-2">Izaberi →</p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Istorija faktura (samo za plaćanje po fakturi) */}
+        {portal && portal.invoices.length > 0 && (
+          <div>
+            <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wide">
+              Istorija faktura
+            </h4>
+            <div className="bg-gray-50 dark:bg-infinity-dark-800 rounded-2xl divide-y divide-gray-200 dark:divide-infinity-dark-700">
+              {portal.invoices.map((inv) => (
+                <div key={inv.id} className="flex items-center justify-between gap-3 p-4">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 dark:text-white truncate">{inv.broj_fakture}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {new Date(inv.datum.replace(' ', 'T')).toLocaleDateString('sr-RS', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      {' · '}
+                      {Number(inv.ukupno).toLocaleString('sr-RS', { minimumFractionDigits: 2 })} {inv.valuta}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${INVOICE_STATUS[inv.status]?.cls || 'bg-gray-100 text-gray-600'}`}>
+                      {INVOICE_STATUS[inv.status]?.label || inv.status}
+                    </span>
+                    <a
+                      href={billingApi.invoiceUrl(inv.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-semibold text-infinity-green-600 hover:underline"
+                    >
+                      PDF
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Plaćanja obrađuje Paddle.com — pogledaj našu{' '}
+          Kartično plaćanje obrađuje {MERCHANT_OF_RECORD.name} — pogledaj našu{' '}
           <a href="/refund-policy" className="underline hover:text-infinity-green-500">Politiku povraćaja novca</a>.
+          {' '}Za e-fakturu na SEF izaberite plaćanje po fakturi.
         </p>
       </div>
     );
@@ -519,7 +653,7 @@ export default function SettingsModal({ isOpen, onClose, initialTab = 'account' 
               <h4 className="font-bold text-gray-900 dark:text-white">Obriši nalog</h4>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Trajno brisanje naloga, profila, favorita i istorije slušanja. Aktivna pretplata neće biti automatski
-                otkazana kod Paddle-a — otkaži je pre brisanja naloga u sekciji "Pretplata i naplata".
+                otkazana kod {MERCHANT_OF_RECORD.name}-a — otkaži je pre brisanja naloga u sekciji "Pretplata i naplata".
               </p>
             </div>
           </div>

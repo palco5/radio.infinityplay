@@ -5,12 +5,9 @@ import App from './App.tsx';
 
 console.log('InfinityPlay Radio App v2.0 - API Refactor Loaded');
 
-// Auto-reload when a new service worker takes control (PWA update)
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload();
-  });
-}
+// NAMERNO ne osvežavamo stranicu na SW update — korisnici slušaju radio, pa ne
+// želimo da im deploy prekine reprodukciju. Nova verzija se primeni pri sledećem
+// prirodnom otvaranju/osvežavanju aplikacije.
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

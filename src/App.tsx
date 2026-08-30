@@ -10,7 +10,9 @@ import Footer from './components/layout/Footer';
 import PageLoadAnimation from './components/ui/PageLoadAnimation';
 import LandingPage from './pages/LandingPage';
 import PaymentPage from './pages/PaymentPage';
-import SubscriptionOptionsPage from './pages/SubscriptionOptionsPage';
+import PlanSelectPage from './pages/PlanSelectPage';
+import CheckoutPage from './pages/CheckoutPage';
+import CheckoutFirmaPage from './pages/CheckoutFirmaPage';
 import UserDashboard from './pages/UserDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -31,6 +33,9 @@ function AppContent() {
   const isAdmin = location.pathname === '/admin';
   const isHome = location.pathname === '/';
   const isDashboard = isUserDashboard || isAdmin;
+  // Tok kupovine (izbor paketa + plaćanje): zadržavamo header radi navigacije,
+  // ali sklanjamo veliki Footer da stranica bude fokusirana na plaćanje.
+  const isCheckoutFlow = location.pathname === '/pretplata' || location.pathname.startsWith('/checkout');
   const [showAnimation, setShowAnimation] = useState(true);
 
   // Stop radio when navigating away from user dashboard (to admin or home)
@@ -69,10 +74,26 @@ function AppContent() {
               }
             />
             <Route
-              path="/subscription-options"
+              path="/pretplata"
               element={
                 <ProtectedRoute>
-                  <SubscriptionOptionsPage />
+                  <PlanSelectPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/checkout"
+              element={
+                <ProtectedRoute>
+                  <CheckoutPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/checkout/firma"
+              element={
+                <ProtectedRoute>
+                  <CheckoutFirmaPage />
                 </ProtectedRoute>
               }
             />
@@ -94,7 +115,7 @@ function AppContent() {
             />
           </Routes>
         </main>
-        {!shouldHideLayout && <Footer />}
+        {!shouldHideLayout && !isCheckoutFlow && <Footer />}
         {!isDashboard && <CookieConsent />}
       </div>
     </>

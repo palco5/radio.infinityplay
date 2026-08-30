@@ -71,8 +71,8 @@ export interface UserProfile {
   my_radio_stream_url?: string;
   newsletter_subscribed?: boolean;
   cancel_at_period_end?: boolean;
-  paddle_customer_id?: string;
-  paddle_subscription_id?: string;
+  provider_customer_id?: string;
+  provider_subscription_id?: string;
   trial_ui_config?: any;
   recommended_stations?: string[];
   created_at?: string;

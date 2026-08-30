@@ -77,7 +77,7 @@ function centerScrollFor(doc: DocRect): number {
 // camera following. A switch chains both halves — old station down, then the
 // camera frames the newly clicked one and it climbs up.
 export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOriginEl, onHiddenStationChange }: HeroPlayerProps) {
-  const { currentStation, isPlaying, pause, playStation, volume, setVolume, nowPlayingTitle, nowPlayingCover, nowPlayingPrevious, nowPlayingIsJingle, isNowBlocked, blockCurrentSong, blockCurrentArtist, skipRadioTrack } = useAudio();
+  const { currentStation, isPlaying, pause, playStation, volume, setVolume, nowPlayingTitle, nowPlayingCover, nowPlayingPrevious, nowPlayingIsJingle, isNowBlocked, blockCurrentSong, blockCurrentArtist, skipRadioTrack, playCurrentJingle } = useAudio();
   const [radioSkipping, setRadioSkipping] = useState(false);
   const handleSkipRadio = async () => {
     setRadioSkipping(true);
@@ -97,6 +97,10 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
 
   const handleBlockSong = async () => { await blockCurrentSong(); flashBlockMsg('Pesma blokirana'); };
   const handleBlockArtist = async () => { await blockCurrentArtist(); flashBlockMsg('Izvođač blokiran'); };
+  const handlePlayJingle = async () => {
+    const ok = await playCurrentJingle();
+    flashBlockMsg(ok ? 'Džingl pušten' : 'Nemate podešen džingl');
+  };
   const { songState, currentSong, pauseSong, resumeSong, skipSong, stopSong, songQueue, currentTime, duration, seekTo } = useSongPlayer();
 
   const isSongActiveNow = songState === 'playing' || songState === 'paused' || songState === 'loading';
@@ -548,7 +552,7 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
           )}
         </div>
 
-        {mode === 'radio' && nowPlayingTitle && (
+        {isMojRadio && nowPlayingTitle && (
           <div className="mt-5 flex flex-col items-center gap-2.5" style={{ animation: 'hero-text-in 0.5s ease-out 0.4s both' }}>
             <div className="flex items-center gap-2.5">
               <button
@@ -558,6 +562,14 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
               >
                 <Ban size={17} className="group-hover:rotate-12 transition-transform" />
                 Blokiraj pesmu
+              </button>
+              <button
+                onClick={handlePlayJingle}
+                title="Pusti svoj džingl preko radija"
+                className="group flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-white/15 hover:bg-white/25 border border-white/25 hover:border-white/40 shadow-lg backdrop-blur-sm hover:scale-[1.04] active:scale-95 transition-all duration-200"
+              >
+                <Mic2 size={17} className="group-hover:rotate-12 transition-transform" />
+                Pusti džingl
               </button>
               <button
                 onClick={handleBlockArtist}
@@ -572,6 +584,20 @@ export default function HeroPlayer({ heroSlotRef, getStationOriginEl, getDjOrigi
             {isNowBlocked && !blockMsg && (
               <span className="text-xs text-amber-400/90 font-medium">Blokirano — čeka se sledeća pesma</span>
             )}
+          </div>
+        )}
+
+        {/* Pusti džingl — na tematskim stanicama stoji sam (na Moj Radio je u redu sa blok dugmadima) */}
+        {mode === 'radio' && !isMojRadio && (
+          <div className="mt-5 flex justify-center" style={{ animation: 'hero-text-in 0.5s ease-out 0.5s both' }}>
+            <button
+              onClick={handlePlayJingle}
+              title="Pusti svoj džingl preko radija"
+              className="group flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-white/15 hover:bg-white/25 border border-white/25 hover:border-white/40 shadow-lg backdrop-blur-sm hover:scale-[1.04] active:scale-95 transition-all duration-200"
+            >
+              <Mic2 size={17} className="group-hover:rotate-12 transition-transform" />
+              Pusti džingl
+            </button>
           </div>
         )}
 

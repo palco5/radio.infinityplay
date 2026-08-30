@@ -127,11 +127,12 @@ export const auth = {
     },
 
     async getCurrentUser() {
+        // NE brišemo token na grešku — mrežni/serverski štucaj ne sme da izloguje
+        // korisnika. Vrati null; pozivalac zadržava sesiju iz lokalnog tokena.
         try {
             const data = await apiCall('/auth.php?path=me');
             return data.user;
         } catch (error) {
-            localStorage.removeItem('auth_token');
             return null;
         }
     },
@@ -399,15 +400,182 @@ export const nowplaying = {
     },
 };
 
-// Paddle billing — checkout config + subscription management
-export const paddle = {
-    async getConfig(): Promise<{ environment: string; clientToken: string; prices: Record<string, string> }> {
-        const response = await fetch(`${API_URL}/paddle_config.php`);
+// Polar (merchant of record) — kartično plaćanje
+export const polar = {
+    // Javni config (bez tajni): da li je Polar podešen na serveru + okruženje.
+    async getConfig(): Promise<{ provider: string; environment: string; configured: boolean }> {
+        const response = await fetch(`${API_URL}/polar_config.php`);
         return response.json();
     },
 
-    async cancelSubscription() {
-        return apiCall('/paddle_subscription.php?action=cancel', { method: 'POST' });
+    // Server pravi Polar checkout sesiju za paket/ciklus i vraća URL (za embed/modal).
+    async createCheckout(params: { plan: string; ciklus: 'mesecno' | 'godisnje' }): Promise<{ url: string; id?: string }> {
+        return apiCall('/polar_checkout.php', { method: 'POST', body: JSON.stringify(params) });
+    },
+
+    // Posle uspešne uplate: povuci stanje sa Polara odmah (ne čekaj webhook).
+    async sync(checkoutId: string): Promise<{ synced: boolean; state?: string; pending?: boolean }> {
+        return apiCall('/polar_sync.php', { method: 'POST', body: JSON.stringify({ checkout_id: checkoutId }) });
+    },
+
+    // Polar Customer Portal — hostovano upravljanje karticom/plaćanjem/fakturama
+    // (kao Claude→Stripe). Vraća URL na koji preusmeravamo korisnika.
+    async portal(): Promise<{ url: string }> {
+        return apiCall('/polar_portal.php', { method: 'POST' });
+    },
+};
+
+// Billing (plaćanje po fakturi za firme — e-faktura na SEF)
+export interface FirmaCheckoutPayload {
+    plan: string;
+    ciklus: 'mesecno' | 'godisnje';
+    broj_lokacija: number;
+    pib: string;
+    naziv: string;
+    maticni_broj?: string; // opciono — PIB je dovoljan za fakturu
+    adresa: string;
+    grad: string;
+    postanski_broj: string;
+    email: string;
+    kontakt_osoba?: string;
+    u_sistemu_pdv: boolean;
+}
+
+export interface FirmaCheckoutResult {
+    success: boolean;
+    redirect: string;
+    subscription: { id: string; state: string; access_until: string; ukupno: number; currency: string };
+}
+
+export interface BillingPortalPayment {
+    invoice_id: number;
+    broj_fakture: string;
+    ukupno: string;
+    valuta: string;
+    racun: string;
+    poziv_na_broj: string;
+    primalac: string;
+    datum_valute: string;
+    qr: string; // data URL PNG (prazan ako firma nije podešena)
+}
+
+export interface BillingPortalInvoice {
+    id: number;
+    broj_fakture: string;
+    datum: string;
+    ukupno: string;
+    valuta: string;
+    status: string;
+    placeno_datum: string | null;
+}
+
+export interface BillingPortalState {
+    has_access: boolean;
+    subscription: {
+        state: string;
+        payment_method: string;
+        plan: string;
+        ciklus: string;
+        current_period_end: string | null;
+        access_until: string | null;
+        cancel_at_period_end: boolean;
+    } | null;
+    payment: BillingPortalPayment | null;
+    invoices: BillingPortalInvoice[];
+}
+
+export const billing = {
+    // Server validira PIB ponovo, upisuje firmu + pretplatu (pending_payment,
+    // pristup odmah na 3 dana) i stavlja izdavanje fakture u red. Vraća redirect.
+    async firmaCheckout(payload: FirmaCheckoutPayload): Promise<FirmaCheckoutResult> {
+        return apiCall('/checkout_firma.php', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    // Stanje pretplate + podaci za uplatu (IPS QR) + istorija faktura.
+    async getPortal(): Promise<BillingPortalState> {
+        return apiCall('/billing_portal.php');
+    },
+
+    // Otkazivanje (radi za oba načina: faktura + kartica).
+    async cancel(): Promise<{ success: boolean; state: string; access_until: string | null; message?: string }> {
+        return apiCall('/billing_portal.php?action=cancel', { method: 'POST' });
+    },
+
+    // Reaktivacija u toku perioda.
+    async reactivate(): Promise<{ success: boolean; state: string }> {
+        return apiCall('/billing_portal.php?action=reactivate', { method: 'POST' });
+    },
+
+    // URL HTML fakture za pregled/štampu.
+    invoiceUrl(id: number): string {
+        return `${API_URL}/billing_portal.php?action=invoice&id=${id}`;
+    },
+
+    // Pretraga firme za auto-popunu. Po matičnom broju (lokalni registar) ili
+    // po PIB-u (komercijalni API ako je podešen). source_configured=false znači
+    // da izvor nije podešen -> tiho ručni unos.
+    async lookupCompany(params: { mb?: string; pib?: string }): Promise<{
+        found: boolean;
+        source_configured?: boolean;
+        status?: string | null;
+        company?: { naziv: string; adresa: string; grad: string; postanski_broj: string; maticni_broj: string };
+    }> {
+        const qs = params.mb
+            ? `mb=${encodeURIComponent(params.mb)}`
+            : `pib=${encodeURIComponent(params.pib ?? '')}`;
+        return apiCall(`/pib_lookup.php?${qs}`);
+    },
+};
+
+// ── Admin: pregled naplate/pretplata za praćenje biznisa ─────────────────────
+export interface AdminSubscription {
+    id: string;
+    user_id: string;
+    email: string;
+    display_name: string | null;
+    state: string;
+    plan: string;
+    payment_method: string;
+    billing_provider: string | null;
+    cancel_at_period_end: number;
+    current_period_end: string | null;
+    access_until: string | null;
+    trial_ends_at: string | null;
+    provider_subscription_id: string | null;
+    created_at: string;
+    updated_at: string;
+}
+export interface AdminBillingOverview {
+    summary: { total: number; by_state: Record<string, number>; by_method: Record<string, number> };
+    subscriptions: AdminSubscription[];
+}
+export interface BillingEvent { type: string; reason: string | null; created_at: string }
+
+export interface RevenueMetrics {
+    currency: string;
+    start: string;
+    end: string;
+    interval: string;
+    totals: { revenue: number; net_revenue: number; orders: number; mrr: number; active_subscriptions: number }; // u centima
+    periods: { timestamp: string | null; revenue: number }[];
+}
+
+export const adminBilling = {
+    // Sve pretplate + zbir po stanju/načinu plaćanja.
+    async overview(): Promise<AdminBillingOverview> {
+        return apiCall('/admin_billing.php');
+    },
+    // Istorijat (otkaz/reaktivacija/aktivacija…) jedne pretplate.
+    async events(subscriptionId: string): Promise<{ events: BillingEvent[] }> {
+        return apiCall(`/admin_billing.php?events=${encodeURIComponent(subscriptionId)}`);
+    },
+    // Prihod sa Polara (Metrics API) za izabrani period/interval.
+    async metrics(params: { start: string; end: string; interval: 'day' | 'week' | 'month' | 'year' }): Promise<RevenueMetrics> {
+        const qs = `metrics=1&start=${params.start}&end=${params.end}&interval=${params.interval}`;
+        return apiCall(`/admin_billing.php?${qs}`);
     },
 };
 

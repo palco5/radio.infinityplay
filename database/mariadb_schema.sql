@@ -28,9 +28,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   cancel_at_period_end BOOLEAN DEFAULT FALSE,
   selected_plan_id VARCHAR(100),
 
-  -- Paddle (billing provider)
-  paddle_customer_id VARCHAR(64),
-  paddle_subscription_id VARCHAR(64),
+  -- Billing provider (kartica: Polar)
+  provider_customer_id VARCHAR(64),
+  provider_subscription_id VARCHAR(64),
   
   -- Preferences
   theme_preference VARCHAR(20) DEFAULT 'dark',
@@ -239,5 +239,5 @@ CREATE TABLE IF NOT EXISTS remote_sessions (
 -- MIGRACIJE (pokrenuti ako baza već postoji)
 -- ============================================
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS venue_name VARCHAR(255) AFTER custom_location;
--- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS paddle_customer_id VARCHAR(64);
--- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS paddle_subscription_id VARCHAR(64);
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS provider_customer_id VARCHAR(64);
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS provider_subscription_id VARCHAR(64);

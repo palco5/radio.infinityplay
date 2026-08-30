@@ -5,7 +5,7 @@ import { useState } from 'react';
 import Modal from '../ui/Modal';
 import AuthModal from '../auth/AuthModal';
 import { useAuth } from '../../contexts/AuthContext';
-import { openPaddleCheckout } from '../../lib/paddle';
+import { openPolarCheckout } from '../../lib/polar';
 
 const pricingPlans = [
   {
@@ -79,12 +79,6 @@ export default function PricingSection() {
   const [showContactModal, setShowContactModal] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
 
-  const planKeyForPaddle: Record<string, string> = {
-    'basic-radio': 'basic',
-    'branded-radio': 'branded',
-    'host-radio': 'host',
-  };
-
   const handlePlanSelect = async (plan: typeof pricingPlans[0]) => {
     setSelectedPlan(plan);
     if (plan.id === 'host-radio' || plan.id === 'branded-radio') {
@@ -98,7 +92,7 @@ export default function PricingSection() {
 
     setCheckoutError('');
     try {
-      await openPaddleCheckout(planKeyForPaddle[plan.id], user.id, user.email);
+      await openPolarCheckout({ plan: plan.id, ciklus: 'mesecno' });
     } catch (err: any) {
       setCheckoutError(err.message || 'Plaćanje trenutno nije dostupno, pokušajte kasnije.');
     }
@@ -165,9 +159,6 @@ export default function PricingSection() {
                         {plan.trial.highlight}
                       </span>
                     </div>
-                    <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 text-center mt-2">
-                      Ako ne otkažete tokom 7 dana, automatski se naplaćuje pretplata
-                    </p>
                   </div>
                 )}
 

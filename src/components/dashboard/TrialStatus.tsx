@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Clock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Clock, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import Card from '../ui/Card';
 
 export default function TrialStatus() {
     const { user, profile } = useAuth();
+    const navigate = useNavigate();
     const [timeRemaining, setTimeRemaining] = useState<string>('');
     const [isTrialActive, setIsTrialActive] = useState(false);
     const [_canCancelTrial, setCanCancelTrial] = useState(false);
@@ -83,6 +85,14 @@ export default function TrialStatus() {
                         </p>
                     </div>
                 </div>
+
+                <button
+                    onClick={() => navigate('/pretplata')}
+                    className="shrink-0 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold px-5 py-2.5 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+                >
+                    Plati odmah
+                    <ArrowRight size={16} />
+                </button>
             </div>
         </Card>
     );

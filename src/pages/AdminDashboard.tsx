@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { auth as authApi, stations as stationsApi, profiles as profilesApi, remote as remoteApi } from '../lib/api';
+import { auth as authApi, stations as stationsApi, profiles as profilesApi, remote as remoteApi, adminBilling, type AdminBillingOverview, type AdminSubscription, type BillingEvent, type RevenueMetrics } from '../lib/api';
 import { EVENTS, useEventBus } from '../lib/eventBus';
 import { RadioStation, UserProfile } from '../types';
 import {
@@ -66,7 +66,14 @@ export default function AdminDashboard() {
   const [stations, setStations] = useState<RadioStation[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
+  const [billing, setBilling] = useState<AdminBillingOverview | null>(null);
+  const [revenue, setRevenue] = useState<RevenueMetrics | null>(null);
+  const [revPeriod, setRevPeriod] = useState<'day' | 'month' | 'year' | 'custom'>('month');
+  const [revCustomStart, setRevCustomStart] = useState('');
+  const [revCustomEnd, setRevCustomEnd] = useState('');
+  const [openTimeline, setOpenTimeline] = useState<string | null>(null); // subscription id
+  const [timelineEvents, setTimelineEvents] = useState<BillingEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showAddStation, setShowAddStation] = useState(false);
@@ -158,7 +165,6 @@ export default function AdminDashboard() {
 
       setStations(allStations as RadioStation[]);
       setUsers(allUsers);
-      setPayments([]);
       setLoading(false);
 
       fetchLiveStats();
@@ -181,6 +187,41 @@ export default function AdminDashboard() {
     const interval = setInterval(fetchLiveStats, 30000);
     return () => clearInterval(interval);
   }, [fetchLiveStats]);
+
+  // Učitaj pregled naplate kad se otvori "Pretplate".
+  useEffect(() => {
+    if (currentView !== 'subscriptions') return;
+    adminBilling.overview().then(setBilling).catch(() => {});
+  }, [currentView]);
+
+  // Prihod sa Polara za izabrani period (Danas/Ovaj mesec/Ova godina/Custom).
+  useEffect(() => {
+    const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const now = new Date();
+    let start = '', end = ymd(now);
+    let interval: 'day' | 'month' = 'day';
+    if (revPeriod === 'day') { start = ymd(now); }
+    else if (revPeriod === 'month') { start = ymd(new Date(now.getFullYear(), now.getMonth(), 1)); }
+    else if (revPeriod === 'year') { start = ymd(new Date(now.getFullYear(), 0, 1)); interval = 'month'; }
+    else { start = revCustomStart; end = revCustomEnd; }
+    if (!start || !end) return;
+    adminBilling.metrics({ start, end, interval }).then(setRevenue).catch(() => {});
+  }, [revPeriod, revCustomStart, revCustomEnd]);
+
+  // Otvori/zatvori istorijat (timeline) jedne pretplate.
+  const toggleTimeline = async (sub: AdminSubscription) => {
+    if (openTimeline === sub.id) { setOpenTimeline(null); return; }
+    setOpenTimeline(sub.id);
+    setTimelineLoading(true);
+    try {
+      const { events } = await adminBilling.events(sub.id);
+      setTimelineEvents(events);
+    } catch {
+      setTimelineEvents([]);
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
 
   // Analytics će biti implementirana nakon produkcije
   useEffect(() => {
@@ -447,14 +488,41 @@ export default function AdminDashboard() {
         </Card>
 
         <Card>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 mb-1">Ukupan Prihod</p>
-              <p className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">€{stats.monthlyRevenue.toFixed(2)}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 mb-1">Prihod (Polar)</p>
+              <p className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
+                €{((revenue?.totals.revenue ?? 0) / 100).toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {(revenue?.totals.orders ?? 0)} porudžbina
+                {revenue?.totals.net_revenue ? ` · neto €${(revenue.totals.net_revenue / 100).toFixed(2)}` : ''}
+              </p>
             </div>
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center shrink-0">
               <DollarSign className="text-white" size={20} />
             </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select
+              value={revPeriod}
+              onChange={(e) => setRevPeriod(e.target.value as 'day' | 'month' | 'year' | 'custom')}
+              className="text-xs bg-gray-100 dark:bg-infinity-dark-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-gray-700 dark:text-gray-300"
+            >
+              <option value="day">Danas</option>
+              <option value="month">Ovaj mesec</option>
+              <option value="year">Ova godina</option>
+              <option value="custom">Custom</option>
+            </select>
+            {revPeriod === 'custom' && (
+              <>
+                <input type="date" value={revCustomStart} onChange={(e) => setRevCustomStart(e.target.value)}
+                  className="text-xs bg-gray-100 dark:bg-infinity-dark-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-gray-700 dark:text-gray-300" />
+                <span className="text-xs text-gray-400">–</span>
+                <input type="date" value={revCustomEnd} onChange={(e) => setRevCustomEnd(e.target.value)}
+                  className="text-xs bg-gray-100 dark:bg-infinity-dark-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-gray-700 dark:text-gray-300" />
+              </>
+            )}
           </div>
         </Card>
       </div>
@@ -1051,60 +1119,122 @@ export default function AdminDashboard() {
     </div>
   );
 
-  const renderSubscriptions = () => (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-serif font-bold text-gray-900 dark:text-white">
-        Upravljanje Pretplatama
-      </h2>
+  const renderSubscriptions = () => {
+    const PLAN_LABEL: Record<string, string> = { 'basic-radio': 'Basic Radio', 'branded-radio': 'Brendirani Radio', 'host-radio': 'Host Radio' };
+    const STATE_META: Record<string, { label: string; cls: string }> = {
+      active:          { label: 'Aktivna',              cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+      trialing:        { label: 'Probni period',        cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
+      canceling:       { label: 'Otkazana (do isteka)', cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
+      past_due:        { label: 'Kašnjenje',            cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+      pending_payment: { label: 'Čeka uplatu',          cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+      expired:         { label: 'Istekla',              cls: 'bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
+    };
+    const MONTHLY: Record<string, number> = { 'basic-radio': 15, 'branded-radio': 35, 'host-radio': 16.25 };
+    const fmtDate = (d: string | null) => d ? new Date(d.replace(' ', 'T')).toLocaleDateString('sr-RS', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
-      <Card>
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-          Nedavne Transakcije
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-700">
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Datum</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Korisnik</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Iznos</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Tip</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((payment) => (
-                <tr key={payment.id} className="border-b border-gray-100 dark:border-gray-800">
-                  <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                    {new Date(payment.created_at).toLocaleDateString('sr-RS')}
-                  </td>
-                  <td className="py-3 px-4 text-gray-900 dark:text-white">
-                    {payment.user_id}
-                  </td>
-                  <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">
-                    €{(payment.amount_cents / 100).toFixed(2)}
-                  </td>
-                  <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                    {payment.transaction_type}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${payment.status === 'completed'
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                      : payment.status === 'pending'
-                        ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      }`}>
-                      {payment.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    const subs: AdminSubscription[] = billing?.subscriptions ?? [];
+    const sum = billing?.summary;
+    const mrr = subs.filter(x => ['active', 'canceling', 'past_due'].includes(x.state)).reduce((a, x) => a + (MONTHLY[x.plan] || 0), 0);
+
+    const stat = (label: string, value: number | string, cls = 'text-gray-900 dark:text-white') => (
+      <Card><p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 mb-1">{label}</p><p className={`text-2xl md:text-3xl font-bold ${cls}`}>{value}</p></Card>
+    );
+
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-serif font-bold text-gray-900 dark:text-white">Pretplate i naplata</h2>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
+          {stat('Ukupno', sum?.total ?? 0)}
+          {stat('Aktivne', sum?.by_state?.active ?? 0, 'text-green-600')}
+          {stat('Otkazuju se', sum?.by_state?.canceling ?? 0, 'text-orange-500')}
+          {stat('Kašnjenje', sum?.by_state?.past_due ?? 0, 'text-red-500')}
+          {stat('Istekle', sum?.by_state?.expired ?? 0, 'text-gray-500')}
+          {stat('Procenjeni MRR', `€${mrr.toFixed(0)}`, 'text-infinity-green-600')}
         </div>
-      </Card>
-    </div>
-  );
+
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Sve pretplate</h3>
+            <button onClick={() => adminBilling.overview().then(setBilling).catch(() => {})} className="text-sm text-infinity-green-600 hover:underline">Osveži</button>
+          </div>
+          {!billing ? (
+            <p className="text-gray-500 dark:text-gray-400 py-6 text-center">Učitavanje…</p>
+          ) : subs.length === 0 ? (
+            <p className="text-gray-500 dark:text-gray-400 py-6 text-center">Još nema pretplata.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 text-left text-gray-600 dark:text-gray-400">
+                    <th className="py-3 px-3 font-semibold">Korisnik</th>
+                    <th className="py-3 px-3 font-semibold">Plan</th>
+                    <th className="py-3 px-3 font-semibold">Status</th>
+                    <th className="py-3 px-3 font-semibold">Plaćanje</th>
+                    <th className="py-3 px-3 font-semibold">Naredna naplata / pristup</th>
+                    <th className="py-3 px-3 font-semibold"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subs.map((sub) => {
+                    const meta = STATE_META[sub.state] || { label: sub.state, cls: 'bg-gray-100 text-gray-600' };
+                    const isOpen = openTimeline === sub.id;
+                    return (
+                      <Fragment key={sub.id}>
+                        <tr className="border-b border-gray-100 dark:border-gray-800">
+                          <td className="py-3 px-3">
+                            <p className="font-medium text-gray-900 dark:text-white">{sub.email}</p>
+                            {sub.display_name && <p className="text-xs text-gray-500">{sub.display_name}</p>}
+                          </td>
+                          <td className="py-3 px-3 text-gray-900 dark:text-white">{PLAN_LABEL[sub.plan] || sub.plan}</td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${meta.cls}`}>{meta.label}</span>
+                          </td>
+                          <td className="py-3 px-3 text-gray-600 dark:text-gray-400">{sub.payment_method === 'faktura' ? 'Faktura' : 'Kartica'}</td>
+                          <td className="py-3 px-3 text-gray-600 dark:text-gray-400">
+                            {sub.cancel_at_period_end
+                              ? <>Pristup do {fmtDate(sub.current_period_end)}</>
+                              : fmtDate(sub.current_period_end || sub.access_until)}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <button onClick={() => toggleTimeline(sub)} className="text-infinity-green-600 hover:underline whitespace-nowrap">
+                              {isOpen ? 'Sakrij' : 'Istorijat'}
+                            </button>
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="bg-gray-50 dark:bg-infinity-dark-800/50">
+                            <td colSpan={6} className="py-3 px-4">
+                              {timelineLoading ? (
+                                <p className="text-gray-500 text-sm">Učitavanje istorijata…</p>
+                              ) : timelineEvents.length === 0 ? (
+                                <p className="text-gray-500 text-sm">Nema zabeleženih događaja.</p>
+                              ) : (
+                                <ul className="space-y-2">
+                                  {timelineEvents.map((e, i) => (
+                                    <li key={i} className="flex items-start gap-3 text-sm">
+                                      <span className="text-gray-400 whitespace-nowrap tabular-nums">
+                                        {new Date(e.created_at.replace(' ', 'T')).toLocaleString('sr-RS', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                      <span className="text-gray-700 dark:text-gray-300">{e.reason || e.type}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  };
 
   const renderAnalytics = () => (
     <div className="space-y-6">
@@ -1357,7 +1487,7 @@ export default function AdminDashboard() {
       )}
 
       {/* Sidebar */}
-      <aside className={`w-64 bg-white dark:bg-infinity-dark-800 border-r border-gray-200 dark:border-gray-700 flex flex-col fixed h-full z-50 transition-transform duration-300 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+      <aside className={`w-64 bg-white dark:bg-infinity-dark-800 border-r border-gray-200 dark:border-gray-700 flex flex-col fixed h-full z-50 overflow-y-auto transition-transform duration-300 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
         <div className="p-4 md:p-6">
           <div className="flex items-center justify-between mb-6 md:mb-8">
             <div className="flex items-center space-x-2">

@@ -117,7 +117,7 @@ export default function PaymentPage() {
               <div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Primalac</p>
                 <p className="font-medium text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-1">
-                  Bitrejt d.o.o. Beograd
+                  InfinityPlay Radio
                 </p>
               </div>
 

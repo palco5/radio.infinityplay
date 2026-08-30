@@ -68,6 +68,7 @@ interface UseRemoteSessionOptions {
   onSongResume: () => void;
   onSongStop: () => void;
   onSongSkip?: () => void;
+  onPlayJingle?: () => void;
   onSongPlay?: (song: SongInfo, immediate: boolean) => void;
   onScheduleSwitch?: (keepInQueue: number, station: RadioStation) => void;
   onResumeSaved?: (immediate: boolean) => void;
@@ -96,6 +97,7 @@ export function useRemoteSession({
   onSongResume,
   onSongStop,
   onSongSkip,
+  onPlayJingle,
   onSongPlay,
   onScheduleSwitch,
   onResumeSaved,
@@ -134,6 +136,7 @@ export function useRemoteSession({
   const onSongResumeRef = useRef(onSongResume);
   const onSongStopRef = useRef(onSongStop);
   const onSongSkipRef = useRef(onSongSkip);
+  const onPlayJingleRef = useRef(onPlayJingle);
   const onSongPlayRef = useRef(onSongPlay);
   const onScheduleSwitchRef = useRef(onScheduleSwitch);
   const onResumeSavedRef = useRef(onResumeSaved);
@@ -160,6 +163,7 @@ export function useRemoteSession({
   onSongResumeRef.current = onSongResume;
   onSongStopRef.current = onSongStop;
   onSongSkipRef.current = onSongSkip;
+  onPlayJingleRef.current = onPlayJingle;
   onSongPlayRef.current = onSongPlay;
   onScheduleSwitchRef.current = onScheduleSwitch;
   onResumeSavedRef.current = onResumeSaved;
@@ -178,6 +182,8 @@ export function useRemoteSession({
       onSongStopRef.current();
     } else if (command === 'song_skip') {
       onSongSkipRef.current?.();
+    } else if (command === 'play_jingle') {
+      onPlayJingleRef.current?.();
     } else if (command.startsWith('play:')) {
       const stationId = command.slice(5);
       const station = allStationsRef.current.find(s => s.id === stationId);

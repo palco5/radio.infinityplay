@@ -1,4 +1,5 @@
 import { FileText } from 'lucide-react';
+import { MERCHANT_OF_RECORD } from '../lib/plans';
 
 export default function TermsOfServicePage() {
   return (
@@ -47,8 +48,8 @@ export default function TermsOfServicePage() {
               <li><strong>Host Radio</strong> — godišnja pretplata za napredne korisnike</li>
             </ul>
             <p className="mt-3">
-              Plaćanja obrađuje <strong>Paddle.com Market Limited</strong>, naš ovlašćeni prodavac (Merchant of Record) —
-              Paddle se pojavljuje na vašem bankovnom izvodu kao prodavac i odgovoran je za naplatu, poresku obradu i
+              Plaćanja obrađuje <strong>{MERCHANT_OF_RECORD.legal}</strong>, naš ovlašćeni prodavac (Merchant of Record) —
+              {MERCHANT_OF_RECORD.name} se pojavljuje na vašem bankovnom izvodu kao prodavac i odgovoran je za naplatu, poresku obradu i
               podršku vezanu za plaćanje. Pretplate se automatski obnavljaju na kraju svakog obračunskog perioda.
               Otkazivanje je moguće u svakom trenutku putem Podešavanja naloga, a pristup traje do kraja plaćenog
               perioda. Detalje o povraćaju novca pogledajte u našoj{' '}
@@ -76,8 +77,7 @@ export default function TermsOfServicePage() {
           <section>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">7. Vlasnik usluge i intelektualna svojina</h2>
             <p>
-              Uslugu InfinityPlay Radio pruža <strong>Bitrejt d.o.o.</strong>{' '}
-              (u daljem tekstu: "InfinityPlay"). Sav sadržaj na platformi (dizajn, kod, logotipi, naziv) vlasništvo je
+              Uslugu InfinityPlay Radio (u daljem tekstu: "InfinityPlay") pružamo mi. Sav sadržaj na platformi (dizajn, kod, logotipi, naziv) vlasništvo je
               InfinityPlay. Zabranjeno je kopiranje, reprodukovanje ili distribucija bez pisane dozvole. Radio stanice
               emituju sadržaj u skladu sa važećim propisima o autorskim pravima.
             </p>

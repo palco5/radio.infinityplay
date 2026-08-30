@@ -1,257 +1,104 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ChevronDown, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Check, CreditCard, Building2, AlertCircle } from 'lucide-react';
-import Card from '../ui/Card';
 import AuthModal from '../auth/AuthModal';
 
-const pricingPlans = [
+const faqs: { q: string; a: string }[] = [
     {
-        id: 'basic-radio',
-        name: 'BASIC RADIO',
-        price: 15,
-        currency: '€',
-        priceRsd: 1770,
-        interval: 'mesečno',
-        recommended: true,
-        features: [
-            'Pristup svim stanicama',
-            'Bez reklama',
-            'Visok kvalitet zvuka',
-            'Podrška putem emaila',
-            '7 dana probni period'
-        ]
+        q: 'Kako se plaća?',
+        a: 'Karticom (Visa/Mastercard) preko bezbednog checkout-a, ili — za firme — po fakturi sa e-fakturom na SEF (plaćanje virmanom).',
     },
     {
-        id: 'branded-radio',
-        name: 'BRANDED RADIO',
-        price: 35,
-        currency: '€',
-        priceRsd: 4130,
-        interval: 'mesečno',
-        features: [
-            'Sve iz Basic paketa',
-            'Brendirani džinglovi',
-            'Prioritetna podrška',
-            'Personalizovani stream'
-        ]
+        q: 'Postoji li probni period?',
+        a: 'Da — 7 dana besplatno da isprobaš sve funkcije.',
     },
     {
-        id: 'host-radio',
-        name: 'HOST RADIO',
-        price: 195,
-        currency: '€',
-        priceRsd: 23000,
-        interval: 'godišnje',
-        features: [
-            'Sve iz Branded paketa',
-            'Admin panel',
-            'Kreiranje stanica',
-            'Profesionalni hosting'
-        ]
+        q: 'Mogu li da otkažem bilo kada?',
+        a: 'Da, otkazuješ jednim klikom u podešavanjima naloga; pristup ti ostaje do kraja plaćenog perioda.',
+    },
+    {
+        q: 'Mogu li da platim kao firma i dobijem fakturu?',
+        a: 'Da. Uneseš PIB, mi izdajemo e-fakturu na SEF, a plaćaš virmanom. Pristup se otključava odmah.',
+    },
+    {
+        q: 'Kako puštam muziku u svom prostoru?',
+        a: 'Pustiš stream direktno iz pregledača na telefonu, tabletu ili računaru — bez instalacije.',
+    },
+    {
+        q: 'Mogu li da upravljam muzikom daljinski, sa telefona?',
+        a: 'Da. Sa telefona kontrolišeš šta svira u tvom prostoru — menjaš stanicu, preskačeš pesme, podešavaš jačinu i puštaš svoje plejliste, sa bilo kog mesta gde imaš internet.',
     },
 ];
 
-type Country = 'serbia' | 'other';
-
 export default function SubscriptionOptionsSection() {
-    const { user, profile } = useAuth();
-    const [selectedPlanId, setSelectedPlanId] = useState<string>('basic-radio');
-    const [selectedCountry, setSelectedCountry] = useState<Country>('serbia');
+    const { user } = useAuth();
+    const navigate = useNavigate();
+    const [openIndex, setOpenIndex] = useState<number | null>(0);
     const [showAuthModal, setShowAuthModal] = useState(false);
 
-
-    const selectedPlan = pricingPlans.find(p => p.id === selectedPlanId) || pricingPlans[0];
-
-    const renderPaymentInstructions = () => {
-        if (selectedCountry === 'other') {
-            return (
-                <div className="bg-gray-50 dark:bg-gray-900/20 border-2 border-gray-200 dark:border-gray-800 rounded-2xl p-8 text-center mt-6">
-                    <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <CreditCard className="text-gray-400" size={32} />
-                    </div>
-
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                        Uskoro dostupno
-                    </h3>
-
-                    <p className="text-gray-600 dark:text-gray-400 mb-6">
-                        Plaćanje za zemlje van Srbije biće omogućeno uskoro.
-                        Trenutno je moguće plaćanje samo za korisnike iz Srbije putem bankovnog transfera.
-                    </p>
-
-                    <div className="bg-white dark:bg-infinity-dark-800 rounded-xl p-4 border border-gray-100 dark:border-gray-700 inline-block text-left">
-                        <p className="text-sm font-bold text-gray-900 dark:text-white mb-2">Kontakt za informacije:</p>
-                        <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                            <p>Email: <a href="mailto:support@infinityplay.rs" className="text-infinity-green-600 hover:underline">support@infinityplay.rs</a></p>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
-        return (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-2xl p-6 mt-6">
-                <div className="flex items-center mb-4">
-                    <Building2 className="text-blue-600 mr-3" size={32} />
-                    <div>
-                        <h3 className="font-bold text-gray-900 dark:text-white">Bankovski Transfer (Srbija)</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Instrukcije za uplatu:</p>
-                    </div>
-                </div>
-
-                <div className="space-y-4 bg-white dark:bg-infinity-dark-800 rounded-xl p-5 border border-blue-100 dark:border-blue-900">
-                    <div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Uplatilac</p>
-                        <p className="font-medium text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-1">
-                            {profile?.first_name || 'Vaše ime'}, {profile?.last_name || 'prezime'} ili naziv firme i mesto
-                        </p>
-                    </div>
-
-                    <div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Svrha uplate</p>
-                        <p className="font-medium text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-1 break-all">
-                            Pretplata za {selectedPlan.name}, {user?.email || 'vaš email'}
-                        </p>
-                    </div>
-
-                    <div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Primalac</p>
-                        <p className="font-medium text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-1">
-                            Bitrejt d.o.o. Beograd
-                        </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Račun</p>
-                            <p className="font-mono font-bold text-gray-900 dark:text-white text-lg break-all">
-                                205-0000000357135-48
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Model</p>
-                            <p className="font-mono font-bold text-gray-900 dark:text-white">
-                                (ostaviti prazno)
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="mt-2 text-right">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Iznos za uplatu</p>
-                        <div className="flex items-end justify-end">
-                            <p className="font-bold text-gray-400 dark:text-gray-500 text-lg mr-2 line-through">
-                                {selectedPlan.price} {selectedPlan.currency}
-                            </p>
-                            <p className="font-mono font-bold text-infinity-green-600 text-3xl">
-                                {(selectedPlan.price * 117.5).toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RSD
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mt-4 flex items-start p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
-                    <AlertCircle className="text-yellow-600 dark:text-yellow-400 mr-3 mt-0.5 flex-shrink-0" size={20} />
-                    <p className="text-sm text-yellow-800 dark:text-yellow-300">
-                        <strong>Napomena:</strong> Aktivacija naloga se vrši nakon evidentirane uplate (obično u roku od 24h).
-                    </p>
-                </div>
-            </div>
-        );
+    const handleCta = () => {
+        if (user) navigate('/pretplata');
+        else setShowAuthModal(true);
     };
 
     return (
-        <section id="subscription-options" className="py-12 md:py-20 px-4 bg-gray-50 dark:bg-[#0F172A] transition-colors duration-300">
-            <div className="max-w-4xl mx-auto space-y-6 md:space-y-8">
-                <div className="text-center">
+        <section id="faq" className="py-12 md:py-20 px-4 bg-gray-50 dark:bg-[#0F172A] transition-colors duration-300">
+            <div className="max-w-3xl mx-auto">
+                <div className="text-center mb-8 md:mb-12">
                     <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white sm:text-4xl font-serif">
-                        Odaberite Vaš Paket
+                        Česta pitanja
                     </h2>
-                    <p className="mt-2 md:mt-4 text-xl sm:text-3xl font-bold text-gray-800 dark:text-gray-200">
-                        Izvršite uplatu
+                    <p className="mt-2 md:mt-4 text-base md:text-lg text-gray-600 dark:text-gray-400">
+                        Sve što treba da znaš pre nego što počneš.
                     </p>
                 </div>
 
-
-
-                <Card className="p-4 md:p-8">
-                    {/* Custom Tab Slider for Plans */}
-                    <div className="mb-6 md:mb-8">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 md:mb-4 text-center">
-                            Izaberite Paket
-                        </label>
-                        <div className="bg-gray-100 dark:bg-gray-800 p-1.5 rounded-xl md:rounded-2xl flex flex-col sm:flex-row gap-2">
-                            {pricingPlans.map((plan) => (
+                <div className="space-y-3 md:space-y-4">
+                    {faqs.map((item, i) => {
+                        const open = openIndex === i;
+                        return (
+                            <div
+                                key={i}
+                                className="bg-white dark:bg-infinity-dark-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+                            >
                                 <button
-                                    key={plan.id}
-                                    onClick={() => setSelectedPlanId(plan.id)}
-                                    className={`flex-1 py-3 px-4 rounded-lg md:rounded-xl text-sm font-bold transition-all duration-200 flex items-center justify-center ${selectedPlanId === plan.id
-                                        ? 'bg-white dark:bg-infinity-dark-700 text-infinity-green-600 shadow-md transform scale-[1.02]'
-                                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
-                                        }`}
+                                    onClick={() => setOpenIndex(open ? null : i)}
+                                    aria-expanded={open}
+                                    className="w-full flex items-center justify-between gap-4 text-left px-5 md:px-6 py-4 md:py-5 hover:bg-gray-50 dark:hover:bg-infinity-dark-700/50 transition-colors"
                                 >
-                                    <span className="mr-2">{plan.name}</span>
-                                    {selectedPlanId === plan.id && <Check size={16} />}
+                                    <span className="font-bold text-gray-900 dark:text-white text-base md:text-lg">
+                                        {item.q}
+                                    </span>
+                                    <ChevronDown
+                                        className={`text-infinity-green-600 shrink-0 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
+                                        size={22}
+                                    />
                                 </button>
-                            ))}
-                        </div>
-                    </div>
+                                <div className={`grid transition-all duration-300 ease-in-out ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                                    <div className="overflow-hidden">
+                                        <p className="px-5 md:px-6 pb-5 text-gray-600 dark:text-gray-400 leading-relaxed">
+                                            {item.a}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
 
-                    {/* Selected Plan Details Preview */}
-                    <div className="mb-6 md:mb-8 text-center p-4 md:p-6 bg-infinity-green-50 dark:bg-infinity-green-900/10 rounded-xl md:rounded-2xl border border-infinity-green-100 dark:border-infinity-green-900/30">
-                        <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                            {selectedPlan.name}
-                        </h2>
-                        <div className="flex justify-center items-baseline mb-4">
-                            <span className="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white">
-                                {selectedPlan.price}{selectedPlan.currency}
-                            </span>
-                            <span className="ml-2 text-sm md:text-base text-gray-600 dark:text-gray-400">
-                                / {selectedPlan.interval}
-                            </span>
-                        </div>
-                        <div className="flex flex-wrap justify-center gap-2 md:gap-3">
-                            {selectedPlan.features.map((feature, i) => (
-                                <span key={i} className="bg-white dark:bg-infinity-dark-800 text-gray-700 dark:text-gray-300 px-2 py-1 md:px-3 md:py-1 rounded-full text-[10px] md:text-xs font-medium border border-gray-200 dark:border-gray-700">
-                                    {feature}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Country Toggle */}
-                    <div className="flex justify-center mb-6">
-                        <div className="inline-flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
-                            <button
-                                onClick={() => setSelectedCountry('serbia')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedCountry === 'serbia'
-                                    ? 'bg-white dark:bg-infinity-dark-700 text-gray-900 dark:text-white shadow-sm'
-                                    : 'text-gray-500 dark:text-gray-400'
-                                    }`}
-                            >
-                                Srbija
-                            </button>
-                            <button
-                                onClick={() => setSelectedCountry('other')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedCountry === 'other'
-                                    ? 'bg-white dark:bg-infinity-dark-700 text-gray-900 dark:text-white shadow-sm'
-                                    : 'text-gray-500 dark:text-gray-400'
-                                    }`}
-                            >
-                                Ostale Zemlje
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Payment Instructions */}
-                    {renderPaymentInstructions()}
-                </Card>
+                <div className="text-center mt-8 md:mt-10">
+                    <button
+                        onClick={handleCta}
+                        className="inline-flex items-center gap-2 bg-infinity-green-600 hover:bg-infinity-green-700 text-white font-bold px-8 py-3.5 rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                    >
+                        Započni besplatno
+                        <ArrowRight size={18} />
+                    </button>
+                </div>
             </div>
 
-            {/* Auth Modal */}
-            <AuthModal
-                isOpen={showAuthModal}
-                onClose={() => setShowAuthModal(false)}
-            />
+            <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
         </section>
     );
 }

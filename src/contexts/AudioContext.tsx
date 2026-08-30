@@ -18,6 +18,7 @@ interface AudioContextType {
   pause: () => void;
   setVolume: (volume: number) => void;
   playJingle: (url: string, volumeBoostDb?: number) => Promise<void>;
+  playCurrentJingle: () => Promise<boolean>;
   updateJingles: (jingles: UserJingle[]) => void;
   fadeRadioTo: (volume: number, duration?: number) => void;
   setSongTransitionCallback: (cb: (() => void) | null) => void;
@@ -260,11 +261,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const inGrace = blocked && nowPlayingTitle === graceTitleRef.current;
 
     if (blocked && isMoj) {
-      if (!isNowBlockedRef.current) {
-        isNowBlockedRef.current = true;
-        setIsNowBlocked(true);
-        fadeRadioTo(0, 500);
-      }
+      // Na Moj Radio: SAMO seamless skip, nikad utišavanje. Pesma se čuje dok ne
+      // dođe nova (bez tišine), a obrisana je iz MediaCP-a pa se ne ponavlja.
+      // Bez muta je dosledno bez obzira odakle je blok stigao (uređaj/daljinski/
+      // telefon) — daljinski nema lokalni "grace" pa bi inače utišao.
       if (lastSkipTitleRef.current !== nowPlayingTitle) {
         lastSkipTitleRef.current = nowPlayingTitle;
         blacklistApi.skipMojRadio(station!.stream_url).catch(() => {});
@@ -320,35 +320,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const blockCurrentSong = useCallback(() => blockSongByTitle(nowPlayingTitleRef.current), [blockSongByTitle]);
   const blockCurrentArtist = useCallback(() => blockArtistByTitle(nowPlayingTitleRef.current), [blockArtistByTitle]);
 
-  // Force the active radio deck to reconnect to the live point — flushes the
-  // few seconds of already-buffered audio so a skip is heard promptly instead
-  // of only after the old buffer drains.
-  const reconnectRadio = useCallback(() => {
-    const st = currentStationRef.current;
-    if (!st || !isPlayingRef.current) return;
-    const deck = activeDeckRef.current === 1 ? audioRef1.current : audioRef2.current;
-    if (!deck) return;
-    const url = st.stream_url;
-    try {
-      deck.pause();
-      deck.src = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now(); // cache-bust → fresh connection at live edge
-      deck.load();
-      deck.volume = volumeRef.current;
-      deck.play().catch(() => {});
-    } catch { /* ignore */ }
-  }, []);
-
   // Manually skip the current track on the user's personal Moj Radio (MediaCP).
   // No-op on shared stations — a shared stream can't be skipped per-listener.
-  // Returns the API result so the UI can confirm success.
+  // We DON'T reconnect the audio afterwards: a reconnect (pause + fresh connect
+  // at the live edge) causes a brief silence. Instead the stream keeps playing
+  // continuously — MediaCP cuts the current track in the broadcast, so the new
+  // song arrives naturally through the ongoing stream, with no gap of silence
+  // (the skip is simply heard once the already-buffered audio drains).
   const skipRadioTrack = useCallback(async (): Promise<{ ok?: boolean } | null> => {
     const st = currentStationRef.current;
     if (!st || !st.id.startsWith('moj-radio-')) return null;
-    const res = await blacklistApi.skipMojRadio(st.stream_url).catch(() => null);
-    // Give MediaCP a moment to advance, then reconnect so the new song is heard.
-    if (res && res.ok) setTimeout(() => reconnectRadio(), 1800);
-    return res;
-  }, [reconnectRadio]);
+    return await blacklistApi.skipMojRadio(st.stream_url).catch(() => null);
+  }, []);
 
   const unblock = useCallback(async (id: string) => {
     try {
@@ -717,11 +700,32 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const jinglesRef = useRef<UserJingle[]>([]);
+
   const updateJingles = useCallback((jingles: UserJingle[]) => {
+    jinglesRef.current = jingles;
     if (jingleManagerRef.current) {
       jingleManagerRef.current.updateJingles(jingles);
     }
   }, []);
+
+  // Ručno pusti korisnikov džingl (dugme "Pusti džingl") preko trenutne radio
+  // stanice — radi i za Moj Radio i za tematske stanice (lokalni overlay: priguši
+  // radio, pusti džingl, vrati). Vraća false ako korisnik nema aktivan džingl.
+  const playCurrentJingle = useCallback(async (): Promise<boolean> => {
+    const list = jinglesRef.current;
+    const active = list.filter(j => j.is_active !== false);
+    const jingle = (active.length ? active : list)
+      .slice()
+      .sort((a, b) => (a.play_order || 0) - (b.play_order || 0))[0];
+    if (!jingle) return false;
+    const url = jingle.jingle_data
+      ? `data:audio/mpeg;base64,${jingle.jingle_data}`
+      : jingle.cloudinary_url || '';
+    if (!url) return false;
+    await playJingle(url, jingle.volume_boost_db || 0);
+    return true;
+  }, [playJingle]);
 
   const pause = useCallback(() => {
     setIsPlaying(false);
@@ -820,7 +824,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   return (
     <AudioContext.Provider
-      value={{ currentStation, isPlaying, volume, nowPlayingTitle, nowPlayingCover, nowPlayingPrevious, nowPlayingIsJingle, playStation, pause, setVolume, playJingle, updateJingles, fadeRadioTo, setSongTransitionCallback, setSongActive, blacklist, isNowBlocked, blockCurrentSong, blockCurrentArtist, blockSongByTitle, blockArtistByTitle, skipRadioTrack, unblock, refreshBlacklist }}
+      value={{ currentStation, isPlaying, volume, nowPlayingTitle, nowPlayingCover, nowPlayingPrevious, nowPlayingIsJingle, playStation, pause, setVolume, playJingle, playCurrentJingle, updateJingles, fadeRadioTo, setSongTransitionCallback, setSongActive, blacklist, isNowBlocked, blockCurrentSong, blockCurrentArtist, blockSongByTitle, blockArtistByTitle, skipRadioTrack, unblock, refreshBlacklist }}
     >
       {children}
     </AudioContext.Provider>

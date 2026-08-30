@@ -21,3 +21,12 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Local PHP dev override (never commit real/live overrides)
+api/config.local.php
+
+# Veliki generisani/izvorni podaci registra firmi (regeneriši skriptom)
+database/company_registry_data.sql
+
+# Dompdf (10MB vendored PDF lib — na disku za FTP deploy, ne u git)
+api/billing/vendor/dompdf/

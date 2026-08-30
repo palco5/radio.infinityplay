@@ -89,6 +89,7 @@ export default function EditUserModal({ user, onClose, onSuccess }: EditUserModa
                 <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between sticky top-0 bg-white dark:bg-gray-800 z-10 rounded-t-xl">
                     <h2 className="text-xl font-bold dark:text-gray-100">Uredi Korisnika</h2>
                     <button
+                        type="button"
                         onClick={onClose}
                         className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                     >

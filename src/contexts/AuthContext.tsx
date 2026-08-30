@@ -2,6 +2,21 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { auth, profiles } from '../lib/api';
 import { UserProfile } from '../types';
 
+// Dekoduj payload JWT-a lokalno (bez provere potpisa — server proverava potpis na
+// svakom zahtevu). Koristi se da postavimo korisnika iz tokena bez mrežnog poziva,
+// pa sesija preživi mrežni/serverski prekid i nikad se ne izloguje sama.
+function decodeJwtPayload(token: string): { userId?: string; email?: string; exp?: number } | null {
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(
+      atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+    );
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
 interface LocalUser {
   id: string;
   email: string;
@@ -57,32 +72,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initAuth = async () => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) { setLoading(false); return; }
+
+      const payload = decodeJwtPayload(token);
+      const expired = !!payload?.exp && payload.exp * 1000 <= Date.now();
+      if (!payload?.userId || expired) {
+        // Nema važećeg tokena lokalno (ili je istekao) — nije prijavljen. Ne diramo
+        // ništa nasilno; korisnik se prijavljuje ponovo samo ako je token stvarno istekao.
+        setLoading(false);
+        return;
+      }
+
+      // Postavi korisnika ODMAH iz tokena — sesija preživljava mrežne/serverske
+      // prekide. NIKAD se ne izlogujemo automatski, samo na ručni "Odjavi se".
+      setUser({ id: payload.userId, email: payload.email || '', created_at: new Date().toISOString() });
+      setSession({ user: { id: payload.userId, email: payload.email } });
+
+      // Best-effort: povuci pun profil. Ako padne (mreža/server), NE izlogujemo —
+      // zadržavamo sesiju; profil se povuče na sledećem osvežavanju.
       try {
-        const currentUser = await auth.getCurrentUser();
-
-        if (currentUser) {
-          setUser({
-            id: currentUser.id,
-            email: currentUser.email || '',
-            created_at: currentUser.created_at || new Date().toISOString(),
-          });
-
-          // Fetch full profile
-          try {
-            const profileData = await profiles.getById(currentUser.id);
-            setProfile(profileData);
-          } catch (e) {
-            console.error('Error fetching profile:', e);
-            // Fallback to basic user data if profile fetch fails
-            setProfile(currentUser as unknown as UserProfile);
-          }
-
-          setSession({ user: currentUser });
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-        // Clear token if invalid
-        auth.logout();
+        const profileData = await profiles.getById(payload.userId);
+        setProfile(profileData);
+      } catch (e) {
+        console.error('Profile fetch (non-fatal):', e);
       } finally {
         setLoading(false);
       }

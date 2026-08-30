@@ -21,12 +21,8 @@ export default function DashboardSelectionModal({ isOpen, onClose }: DashboardSe
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Izaberite Dashboard">
+    <Modal isOpen={isOpen} onClose={onClose} title="Izaberite Dashboard" hideClose>
       <div className="space-y-4">
-        <p className="text-gray-600 dark:text-gray-400 text-center mb-6">
-          Odaberite koji dashboard želite da pristupite
-        </p>
-
         <button
           onClick={handleAdminDashboard}
           className="w-full p-6 bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border-2 border-red-200 dark:border-red-700 rounded-2xl hover:scale-105 transition-all duration-200 group"
@@ -63,6 +59,13 @@ export default function DashboardSelectionModal({ isOpen, onClose }: DashboardSe
               </p>
             </div>
           </div>
+        </button>
+
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+        >
+          Otkaži
         </button>
       </div>
     </Modal>
