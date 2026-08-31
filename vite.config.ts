@@ -8,9 +8,12 @@ export default defineConfig({
     react(),
     VitePWA({
       // 'prompt' + skipWaiting:false => novi SW se instalira ali ČEKA; ne preuzima
-      // otvorene kartice, pa deploy ne prekida korisnike koji slušaju. Nova verzija
-      // se aktivira pri sledećem potpunom zatvaranju/otvaranju aplikacije.
+      // otvorene kartice, pa deploy ne prekida korisnike koji slušaju. Registraciju
+      // radimo RUČNO u src/main.tsx (injectRegister:false da se ne registruje dvaput):
+      // onNeedRefresh primeni novu verziju čim korisnik ne sluša (i na home-screen
+      // prečici), pa nema više brisanja/ponovnog dodavanja da bi se videla promena.
       registerType: 'prompt',
+      injectRegister: false,
       workbox: {
         skipWaiting: false,
         clientsClaim: false,

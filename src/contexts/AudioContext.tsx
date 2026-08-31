@@ -175,6 +175,16 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [isPlaying, currentStation]);
 
+  // Izloži "da li se sluša" globalno da registracija service worker-a (main.tsx)
+  // može novu verziju da primeni tek kad reprodukcija stane. Kad se sluša->pauza,
+  // odmah javi event-om da čekajući update može da se primeni bez čekanja poll-a.
+  useEffect(() => {
+    window.__radioIsPlaying = isPlaying;
+    if (!isPlaying) {
+      window.dispatchEvent(new Event('radio:idle'));
+    }
+  }, [isPlaying]);
+
   // Poll now-playing title + cover art for display purposes (independent of jingle scheduling).
   useEffect(() => {
     if (!isPlaying || !currentStation) {
